@@ -1,6 +1,6 @@
 # Zed Native Math — Community Patch
 
-Experimental source release **0.1.0** for **Zed 1.25.3**.
+Development source snapshot **0.1.1-dev** for **Zed 1.25.3**.
 
 在 Zed 原生 Markdown 渲染器中显示 LaTeX 数学公式，覆盖 Agent 聊天与 Markdown 预览。不是网页预览，也不是可从扩展商店直接安装的插件。本项目与 Zed Industries 无隶属关系。
 
@@ -10,6 +10,7 @@ Experimental source release **0.1.0** for **Zed 1.25.3**.
 - 原生 RaTeX → SVG → GPUI 渲染，支持主题、字体和异步缓存。
 - 覆盖 Zed 自带 Agent，以及通过 ACP 连接的外部 Agent。
 - 修复多行公式中独立的 `=` / `-` 行被 CommonMark 当成标题标记，继而损坏矩阵换行、指数和环境名称的问题。
+- 行内公式与中文按文字边界换行，括号跟随公式，避免聊天栏缩窄时文字越界。
 - 保留代码块中的 LaTeX 源码，以及数学区域对应的原始字节位置。
 
 以下截图来自原生 Markdown 视图，使用与 Agent 聊天相同的数学渲染组件：
@@ -22,10 +23,10 @@ Experimental source release **0.1.0** for **Zed 1.25.3**.
 | --- | --- |
 | Zed 基线 | `v1.25.3` / `8dd255c3eafb5231056fe4e6f601cedd011f1c93` |
 | 实测平台 | Apple Silicon macOS |
-| 原生数学测试 | 8 项通过，包含 Markdown → RaTeX → SVG → GPUI 图像解码 |
+| 原生数学测试 | 14 项通过，包含 Markdown → RaTeX → SVG → GPUI 图像解码 |
 | 完整原生应用构建 | 通过 |
 | Agent 聊天显示 | 本地验证通过 |
-| 完整 Markdown 测试集 | 未运行 |
+| 完整 Markdown 测试集 | 210 项通过，包含反复调整宽度、选择与复制 |
 | Windows / Linux / Intel Mac | 未验证 |
 
 数学命令支持范围取决于 RaTeX；不承诺完整 TeX 文档编译能力，也不承诺兼容其他 Zed 版本。

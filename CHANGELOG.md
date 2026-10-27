@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Wrap Chinese text around inline math at Unicode word boundaries as the container resizes.
+- Keep opening and closing punctuation with inline formulas.
+- Preserve selection, code chips, links and explicit line breaks across inline layout fragments.
+- Validate the full Markdown suite: 210 tests pass.
+
 ## 0.1.0 — experimental source release
 
 - Adapt native RaTeX rendering to Zed 1.25.3 Markdown and Agent views.

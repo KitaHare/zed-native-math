@@ -1,5 +1,5 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66d7e87905 100644
+index b1577821fb649ddc8a23c2fffe61657b616d9310..6ccccb0c0e366d31a7dd40b1af6423d5c6b1d050 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -2,6 +2,22 @@
@@ -63,7 +63,15 @@ index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66
   "settings",
   "smallvec",
   "stacksafe",
-@@ -12410,6 +12441,15 @@ version = "0.5.2"
+@@ -10526,6 +10557,7 @@ dependencies = [
+  "theme",
+  "theme_settings",
+  "ui",
++ "unicode-segmentation",
+  "util",
+ ]
+ 
+@@ -12410,6 +12442,15 @@ version = "0.5.2"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
  
@@ -79,7 +87,7 @@ index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66
  [[package]]
  name = "p256"
  version = "0.11.1"
-@@ -13851,7 +13891,7 @@ dependencies = [
+@@ -13851,7 +13892,7 @@ dependencies = [
   "dap",
   "encoding_rs",
   "extension",
@@ -88,7 +96,7 @@ index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66
   "file_content",
   "fs",
   "futures 0.3.34",
-@@ -14606,6 +14646,114 @@ version = "1.7.1"
+@@ -14606,6 +14647,114 @@ version = "1.7.1"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "973443cf09a9c8656b574a866ab68dfa19f0867d0340648c7d2f6a71b8a8ea68"
  
@@ -203,7 +211,7 @@ index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66
  [[package]]
  name = "rav1e"
  version = "0.8.1"
-@@ -17709,6 +17857,17 @@ dependencies = [
+@@ -17709,6 +17858,17 @@ dependencies = [
   "version-compare",
  ]
  
@@ -221,7 +229,7 @@ index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66
  [[package]]
  name = "system_specs"
  version = "0.1.0"
-@@ -18796,7 +18955,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -18796,7 +18956,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "2fb391ac70462b3097a755618fbf9c8f95ecc1eb379a414f7b46f202ed10db1f"
  dependencies = [
   "cc",
@@ -230,7 +238,7 @@ index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66
  ]
  
  [[package]]
-@@ -20612,7 +20771,7 @@ dependencies = [
+@@ -20612,7 +20772,7 @@ dependencies = [
   "objc2-foundation 0.3.2",
   "objc2-metal 0.3.2",
   "objc2-quartz-core 0.3.2",
@@ -324,7 +332,7 @@ index 71aa2703c89a31dc59fca5385819c742bd36aa7f..8fd5099e569e819efdb122f96b76d209
              }
          }
 diff --git a/crates/markdown/Cargo.toml b/crates/markdown/Cargo.toml
-index e6f258c50192133c4446073e7b926216e1db48d6..42da6b0d52b6253b569274c2e5c78c38f54d4c6b 100644
+index e6f258c50192133c4446073e7b926216e1db48d6..6b22457ad7b94f5ae1a149049aa3d0cec6d6b164 100644
 --- a/crates/markdown/Cargo.toml
 +++ b/crates/markdown/Cargo.toml
 @@ -30,6 +30,10 @@ log.workspace = true
@@ -338,12 +346,20 @@ index e6f258c50192133c4446073e7b926216e1db48d6..42da6b0d52b6253b569274c2e5c78c38
  settings.workspace = true
  smallvec.workspace = true
  stacksafe.workspace = true
+@@ -37,6 +41,7 @@ sum_tree.workspace = true
+ theme.workspace = true
+ theme_settings.workspace = true
+ ui.workspace = true
++unicode-segmentation.workspace = true
+ util.workspace = true
+ 
+ [dev-dependencies]
 diff --git a/crates/markdown/src/katex.rs b/crates/markdown/src/katex.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cbd8359ada37cd93d1b5334ec3beb9965d915bd2
+index 0000000000000000000000000000000000000000..10e8f02293cf4b23e26c54074993981a70106b48
 --- /dev/null
 +++ b/crates/markdown/src/katex.rs
-@@ -0,0 +1,744 @@
+@@ -0,0 +1,743 @@
 +use collections::HashMap;
 +use gpui::{AnyElement, Context, Hsla, ImageSource, RenderImage, Rgba, StyledText, Task, img};
 +use ratex_layout::{LayoutOptions, layout, to_display_list};
@@ -755,7 +771,6 @@ index 0000000000000000000000000000000000000000..cbd8359ada37cd93d1b5334ec3beb996
 +    use gpui::{Context, IntoElement, Render, RenderImage, TestAppContext, Window};
 +    use std::sync::Arc;
 +    use ui::prelude::*;
-+    use util::ResultExt;
 +
 +    use crate::{Markdown, MarkdownOptions, ParsedMarkdown};
 +
@@ -1089,7 +1104,7 @@ index 0000000000000000000000000000000000000000..cbd8359ada37cd93d1b5334ec3beb996
 +    }
 +}
 diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
-index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da301df912e 100644
+index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02f6ebc486 100644
 --- a/crates/markdown/src/markdown.rs
 +++ b/crates/markdown/src/markdown.rs
 @@ -1,4 +1,5 @@
@@ -1109,7 +1124,15 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
  use log::Level;
  use mermaid::{
      MermaidState, ParsedMarkdownMermaidDiagram, extract_mermaid_diagrams, render_mermaid_diagram,
-@@ -509,6 +514,7 @@ pub struct Markdown {
+@@ -18,6 +23,7 @@ pub use path_range::{LineCol, PathWithRange};
+ use settings::Settings as _;
+ use smallvec::SmallVec;
+ use theme_settings::ThemeSettings;
++use unicode_segmentation::UnicodeSegmentation;
+ use util::maybe;
+ 
+ use std::borrow::Cow;
+@@ -509,6 +515,7 @@ pub struct Markdown {
      /// contents. All entries are retained against the parsed diagrams on each
      /// reparse, so a single map keeps that bookkeeping in one place.
      mermaid_views: HashMap<usize, MermaidViewState>,
@@ -1117,7 +1140,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
      copied_code_blocks: HashSet<ElementId>,
      wrapped_code_blocks: HashSet<usize>,
      code_block_scroll_handles: BTreeMap<usize, ScrollHandle>,
-@@ -523,7 +529,7 @@ pub struct Markdown {
+@@ -523,7 +530,7 @@ pub struct Markdown {
  pub struct MarkdownOptions {
      pub parse_links_only: bool,
      pub parse_html: bool,
@@ -1126,7 +1149,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
      pub parse_heading_slugs: bool,
      pub render_metadata_blocks: bool,
  }
-@@ -675,10 +681,10 @@ impl Markdown {
+@@ -675,10 +682,10 @@ impl Markdown {
      ) -> Self {
          let focus_handle = cx.focus_handle();
  
@@ -1139,7 +1162,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                  }),
              )
          } else {
-@@ -704,6 +710,7 @@ impl Markdown {
+@@ -704,6 +711,7 @@ impl Markdown {
              mermaid_state: MermaidState::default(),
              _mermaid_theme_subscription: theme_subscription,
              mermaid_views: HashMap::default(),
@@ -1147,7 +1170,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
              copied_code_blocks: HashSet::default(),
              wrapped_code_blocks: HashSet::default(),
              code_block_scroll_handles: BTreeMap::default(),
-@@ -754,16 +761,17 @@ impl Markdown {
+@@ -754,16 +762,17 @@ impl Markdown {
              .retain(|id, _| ids.contains(id));
      }
  
@@ -1170,7 +1193,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
              |source_offset| {
                  mermaid_views
                      .get(&source_offset)
-@@ -1231,7 +1239,7 @@ impl Markdown {
+@@ -1231,7 +1240,7 @@ impl Markdown {
          let source = self.source.clone();
          let should_parse_links_only = self.options.parse_links_only;
          let should_parse_html = self.options.parse_html;
@@ -1179,7 +1202,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
          let should_parse_heading_slugs = self.options.parse_heading_slugs;
          let should_parse_metadata_blocks = self.options.render_metadata_blocks;
          let language_registry = self.language_registry.clone();
-@@ -1249,6 +1257,7 @@ impl Markdown {
+@@ -1249,6 +1258,7 @@ impl Markdown {
                          html_blocks: BTreeMap::default(),
                          metadata_blocks: BTreeMap::default(),
                          mermaid_diagrams: BTreeMap::default(),
@@ -1187,7 +1210,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                          heading_slugs: HashMap::default(),
                          footnote_definitions: HashMap::default(),
                          link_definition_spans: Arc::default(),
-@@ -1275,10 +1284,13 @@ impl Markdown {
+@@ -1275,10 +1285,13 @@ impl Markdown {
              let footnote_definitions = parsed.footnote_definitions;
              let link_definition_spans = parsed.link_definition_spans;
              let has_untagged_code_block = parsed.has_untagged_code_block;
@@ -1204,7 +1227,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
              };
              let mut images_by_source_offset = HashMap::default();
              let mut languages_by_name = TreeMap::default();
-@@ -1346,6 +1358,7 @@ impl Markdown {
+@@ -1346,6 +1359,7 @@ impl Markdown {
                  html_blocks,
                  metadata_blocks,
                  mermaid_diagrams,
@@ -1212,7 +1235,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                  heading_slugs,
                  footnote_definitions,
                  link_definition_spans: Arc::from(link_definition_spans),
-@@ -1367,7 +1380,7 @@ impl Markdown {
+@@ -1367,7 +1381,7 @@ impl Markdown {
                  }) {
                      this.active_root_block = None;
                  }
@@ -1221,7 +1244,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                      let parsed_markdown = this.parsed_markdown.clone();
                      this.mermaid_views
                          .retain(|offset, _| parsed_markdown.mermaid_diagrams.contains_key(offset));
-@@ -1381,9 +1394,11 @@ impl Markdown {
+@@ -1381,9 +1395,11 @@ impl Markdown {
                          },
                          cx,
                      );
@@ -1233,7 +1256,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                  }
                  this.pending_parse.take();
                  if this.should_reparse {
-@@ -1495,6 +1510,7 @@ pub struct ParsedMarkdown {
+@@ -1495,6 +1511,7 @@ pub struct ParsedMarkdown {
      pub(crate) html_blocks: BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
      pub(crate) metadata_blocks: BTreeMap<usize, ParsedMetadataBlock>,
      pub(crate) mermaid_diagrams: BTreeMap<usize, ParsedMarkdownMermaidDiagram>,
@@ -1241,7 +1264,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
      pub heading_slugs: HashMap<SharedString, usize>,
      pub footnote_definitions: HashMap<SharedString, usize>,
      pub(crate) link_definition_spans: Arc<[Range<usize>]>,
-@@ -2053,6 +2069,7 @@ impl MarkdownElement {
+@@ -2053,6 +2070,7 @@ impl MarkdownElement {
              self.style.heading_level_styles.as_ref(),
              self.style.heading_border_color,
          );
@@ -1249,7 +1272,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
  
          heading = match align {
              TextAlign::Center => heading.text_center(),
-@@ -2062,7 +2079,9 @@ impl MarkdownElement {
+@@ -2062,7 +2080,9 @@ impl MarkdownElement {
  
          let mut heading_style = self.style.heading.clone();
          let mut heading_text_style = heading_style.text_style().clone();
@@ -1259,7 +1282,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
  
          if let Some(level_style) =
              heading_level_style(level, self.style.heading_level_styles.as_ref())
-@@ -2615,14 +2634,22 @@ impl Element for MarkdownElement {
+@@ -2615,14 +2635,22 @@ impl Element for MarkdownElement {
              }
          };
  
@@ -1284,7 +1307,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
              )
          };
          let mut builder = MarkdownElementBuilder::new(
-@@ -2758,7 +2785,7 @@ impl Element for MarkdownElement {
+@@ -2758,7 +2786,7 @@ impl Element for MarkdownElement {
                              );
                          }
                          MarkdownTag::CodeBlock { kind, .. } => {
@@ -1293,7 +1316,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                                  && let Some(mermaid_diagram) =
                                      parsed_markdown.mermaid_diagrams.get(&range.start)
                              {
-@@ -3358,6 +3385,48 @@ impl Element for MarkdownElement {
+@@ -3358,6 +3386,48 @@ impl Element for MarkdownElement {
                      builder.push_text(&format!("[{label}]"), range.clone());
                      builder.pop_text_style();
                  }
@@ -1342,7 +1365,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
              }
          }
          if self.style.code_block_overflow_x_scroll {
-@@ -3550,6 +3619,55 @@ fn heading_level_style(
+@@ -3550,6 +3620,55 @@ fn heading_level_style(
      }
  }
  
@@ -1398,7 +1421,219 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
  fn render_wrap_code_block_button(
      id: usize,
      is_wrapped: bool,
-@@ -4094,6 +4212,52 @@ impl MarkdownElementBuilder {
+@@ -3770,7 +3889,6 @@ struct MarkdownElementBuilder {
+     rendered_links: Vec<RenderedLink>,
+     rendered_image_links: Vec<RenderedImageLink>,
+     rendered_footnote_refs: Vec<RenderedFootnoteRef>,
+-    current_source_index: usize,
+     html_comment: bool,
+     rendered_footnote_separator: bool,
+     base_text_style: TextStyle,
+@@ -3840,12 +3958,15 @@ impl MarkdownHighlights {
+ struct DivStackEntry {
+     div: AnyDiv,
+     line_break_mode: LineBreakMode,
++    inline_text_started: bool,
++    pending_inline_math: Option<AnyDiv>,
+ }
+ 
+ #[derive(Clone, Copy, Eq, PartialEq)]
+ enum LineBreakMode {
+     TextLayout,
+     FlexWrap,
++    InlineMath,
+ }
+ 
+ impl DivStackEntry {
+@@ -3853,6 +3974,8 @@ impl DivStackEntry {
+         Self {
+             div: div.into(),
+             line_break_mode: LineBreakMode::TextLayout,
++            inline_text_started: false,
++            pending_inline_math: None,
+         }
+     }
+ }
+@@ -3862,11 +3985,131 @@ struct PendingLine {
+     text: String,
+     runs: Vec<TextRun>,
+     source_mappings: Vec<SourceMapping>,
++    source_end: usize,
+     /// Rendered (not source) indices, so chips hug the glyphs and ignore
+     /// unrendered characters like the surrounding backticks
+     code_chips: Vec<(Range<usize>, Hsla)>,
+ }
+ 
++impl PendingLine {
++    fn slice(&self, range: Range<usize>) -> Self {
++        let mut runs = Vec::new();
++        let mut offset = 0;
++        for run in &self.runs {
++            let end = offset + run.len;
++            let len = end.min(range.end).saturating_sub(offset.max(range.start));
++            if len > 0 {
++                let mut run = run.clone();
++                run.len = len;
++                runs.push(run);
++            }
++            offset = end;
++        }
++        let mut mappings = Vec::new();
++        if let Some(source_index) = source_index_for_rendered(&self.source_mappings, range.start) {
++            mappings.push(SourceMapping {
++                rendered_index: 0,
++                source_index,
++            });
++        }
++        mappings.extend(self.source_mappings.iter().filter_map(|mapping| {
++            (mapping.rendered_index > range.start && mapping.rendered_index < range.end).then_some(
++                SourceMapping {
++                    rendered_index: mapping.rendered_index.saturating_sub(range.start),
++                    source_index: mapping.source_index,
++                },
++            )
++        }));
++        Self {
++            text: self.text[range.clone()].to_owned(),
++            runs,
++            source_mappings: mappings,
++            source_end: if range.end == self.text.len() {
++                self.source_end
++            } else {
++                source_index_for_rendered(&self.source_mappings, range.end.saturating_sub(1))
++                    .map_or(self.source_end, |index| index + 1)
++            },
++            code_chips: self
++                .code_chips
++                .iter()
++                .filter_map(|(chip, color)| {
++                    let start = chip.start.max(range.start);
++                    let end = chip.end.min(range.end);
++                    (start < end).then_some((
++                        start.saturating_sub(range.start)..end.saturating_sub(range.start),
++                        *color,
++                    ))
++                })
++                .collect(),
++        }
++    }
++}
++
++fn opens_inline_group(character: char) -> bool {
++    matches!(
++        character,
++        '(' | '[' | '{' | '（' | '【' | '「' | '『' | '《' | '〈' | '“' | '‘'
++    )
++}
++
++fn closes_inline_group(character: char) -> bool {
++    matches!(
++        character,
++        ')' | ']'
++            | '}'
++            | '）'
++            | '】'
++            | '」'
++            | '』'
++            | '》'
++            | '〉'
++            | '”'
++            | '’'
++            | ','
++            | '.'
++            | ':'
++            | ';'
++            | '!'
++            | '?'
++            | '，'
++            | '。'
++            | '：'
++            | '；'
++            | '！'
++            | '？'
++            | '、'
++    )
++}
++
++fn inline_text_ranges(text: &str) -> Vec<Range<usize>> {
++    let mut ranges: Vec<Range<usize>> = Vec::new();
++    let mut start = 0;
++    for (index, word) in text.split_word_bound_indices() {
++        let end = index + word.len();
++        if word.chars().all(opens_inline_group) {
++            continue;
++        }
++        if start == index
++            && word != "\n"
++            && word
++                .chars()
++                .all(|character| character.is_whitespace() || closes_inline_group(character))
++            && let Some(previous) = ranges.last_mut()
++            && &text[previous.clone()] != "\n"
++        {
++            previous.end = end;
++        } else {
++            ranges.push(start..end);
++        }
++        start = end;
++    }
++    if start < text.len() {
++        ranges.push(start..text.len());
++    }
++    ranges
++}
++
+ struct ListStackEntry {
+     bullet_index: Option<u64>,
+ }
+@@ -3889,7 +4132,6 @@ impl MarkdownElementBuilder {
+             rendered_links: Vec::new(),
+             rendered_image_links: Vec::new(),
+             rendered_footnote_refs: Vec::new(),
+-            current_source_index: 0,
+             html_comment: false,
+             rendered_footnote_separator: false,
+             base_text_style,
+@@ -4013,7 +4255,14 @@ impl MarkdownElementBuilder {
+     }
+ 
+     fn push_line_break(&mut self, source_range: Range<usize>) {
+-        if self.uses_flex_line_breaks() {
++        if self
++            .div_stack
++            .last()
++            .is_some_and(|entry| entry.line_break_mode == LineBreakMode::InlineMath)
++        {
++            self.push_text("\n", source_range);
++            self.flush_text();
++        } else if self.uses_flex_line_breaks() {
+             self.modify_current_div(|el| el.child(div().w_full().h_0()));
+         } else {
+             self.push_text("\n", source_range);
+@@ -4023,7 +4272,12 @@ impl MarkdownElementBuilder {
+     fn push_soft_break(&mut self, source_range: Range<usize>) {
+         // A soft break right after an item in flex wrap container would otherwise
+         // render as a stray leading space before the next wrapped item.
+-        if self.uses_flex_line_breaks() && self.pending_line.text.is_empty() {
++        if self
++            .div_stack
++            .last()
++            .is_some_and(|entry| entry.line_break_mode == LineBreakMode::FlexWrap)
++            && self.pending_line.text.is_empty()
++        {
+             return;
+         }
+         self.push_text(" ", source_range);
+@@ -4036,7 +4290,7 @@ impl MarkdownElementBuilder {
+     fn uses_flex_line_breaks(&self) -> bool {
+         self.div_stack
+             .last()
+-            .is_some_and(|entry| entry.line_break_mode == LineBreakMode::FlexWrap)
++            .is_some_and(|entry| entry.line_break_mode != LineBreakMode::TextLayout)
+     }
+ 
+     fn modify_current_div(&mut self, f: impl FnOnce(AnyDiv) -> AnyDiv) {
+@@ -4094,6 +4348,79 @@ impl MarkdownElementBuilder {
          );
      }
  
@@ -1425,19 +1660,46 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
 +        source_range: Range<usize>,
 +        element: impl Into<AnyElement>,
 +    ) {
-+        self.modify_current_div(|div| div.flex().flex_wrap().items_center());
-+        if let Some(entry) = self.div_stack.last_mut() {
-+            entry.line_break_mode = LineBreakMode::FlexWrap;
++        if let Some(mut entry) = self.div_stack.pop() {
++            entry.div = entry
++                .div
++                .flex()
++                .flex_row()
++                .flex_wrap()
++                .items_center()
++                .min_w_0()
++                .max_w_full();
++            entry.line_break_mode = LineBreakMode::InlineMath;
++            self.div_stack.push(entry);
++        }
++
++        // Keep opening punctuation with the formula, even when the line ends
++        // exactly between the parenthesis and its contents.
++        let opening_start = self
++            .pending_line
++            .text
++            .trim_end_matches(opens_inline_group)
++            .len();
++        let opening = self
++            .pending_line
++            .slice(opening_start..self.pending_line.text.len());
++        self.pending_line = self.pending_line.slice(0..opening_start);
++        self.flush_text();
++        let mut group = div()
++            .relative()
++            .flex()
++            .items_center()
++            .flex_none()
++            .min_w_0()
++            .max_w_full();
++        if !opening.text.is_empty() {
++            group = group.child(self.render_text_line(opening));
 +        }
 +        let anchor = self.render_source_anchor_with_text_style(source_range, self.text_style());
-+        self.append_child(
-+            div()
-+                .relative()
-+                .flex_none()
-+                .child(anchor)
-+                .child(element.into())
-+                .into_any_element(),
-+        );
++        group = group.child(anchor).child(element.into());
++        if let Some(entry) = self.div_stack.last_mut() {
++            entry.pending_inline_math = Some(group.into());
++        }
 +    }
 +
 +    fn push_block_text(&mut self, text: &str, source_range: Range<usize>) {
@@ -1451,7 +1713,25 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
      fn push_list(&mut self, bullet_index: Option<u64>) {
          self.list_stack.push(ListStackEntry { bullet_index });
      }
-@@ -4271,7 +4435,14 @@ impl MarkdownElementBuilder {
+@@ -4158,7 +4485,7 @@ impl MarkdownElementBuilder {
+             source_index: source_range.start,
+         });
+         self.pending_line.text.push_str(text);
+-        self.current_source_index = source_range.end;
++        self.pending_line.source_end = source_range.end;
+ 
+         // Compute the base text style once
+         let text_style = self.text_style();
+@@ -4209,7 +4536,7 @@ impl MarkdownElementBuilder {
+                 .text
+                 .truncate(self.pending_line.text.len() - 1);
+             self.pending_line.runs.last_mut().unwrap().len -= 1;
+-            self.current_source_index -= 1;
++            self.pending_line.source_end -= 1;
+         }
+     }
+ 
+@@ -4271,11 +4598,20 @@ impl MarkdownElementBuilder {
      }
  
      fn render_source_anchor(&mut self, source_range: Range<usize>) -> AnyElement {
@@ -1467,7 +1747,276 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
          text_style.color = Hsla::transparent_black();
          let text = "\u{200B}";
          let styled_text = StyledText::new(text).with_runs(vec![text_style.to_run(text.len())]);
-@@ -5799,7 +5970,7 @@ mod tests {
++        let break_before = self.text_break_before();
+         self.rendered_lines.push(Rc::new(RenderedLine {
++            break_before,
+             layout: styled_text.layout().clone(),
+             visible_bounds: Cell::new(None),
+             source_mappings: vec![SourceMapping {
+@@ -4298,26 +4634,77 @@ impl MarkdownElementBuilder {
+     }
+ 
+     fn flush_text(&mut self) {
+-        let text_align = self.text_style().text_align;
+-        let line = mem::take(&mut self.pending_line);
++        let mut line = mem::take(&mut self.pending_line);
++        if self
++            .div_stack
++            .last()
++            .is_some_and(|entry| entry.line_break_mode == LineBreakMode::InlineMath)
++        {
++            if let Some(mut group) = self
++                .div_stack
++                .last_mut()
++                .and_then(|entry| entry.pending_inline_math.take())
++            {
++                let closing_end =
++                    line.text.len() - line.text.trim_start_matches(closes_inline_group).len();
++                if closing_end > 0 {
++                    group = group.child(self.render_text_line(line.slice(0..closing_end)));
++                    line = line.slice(closing_end..line.text.len());
++                }
++                self.append_child(group.into_any_element());
++            }
++            for range in inline_text_ranges(&line.text) {
++                let is_break = &line.text[range.clone()] == "\n";
++                let element = self.render_text_line(line.slice(range));
++                let wrapper = div().min_w_0().max_w_full().flex_shrink_0();
++                self.append_child(if is_break {
++                    wrapper
++                        .w_full()
++                        .h_0()
++                        .overflow_hidden()
++                        .child(element)
++                        .into_any_element()
++                } else {
++                    wrapper.child(element).into_any_element()
++                });
++            }
++            return;
++        }
+         if line.text.is_empty() {
+             return;
+         }
++        let element = self.render_text_line(line);
++        self.append_child(element);
++    }
++
++    fn text_break_before(&mut self) -> bool {
++        if let Some(entry) = self.div_stack.last_mut()
++            && entry.line_break_mode == LineBreakMode::InlineMath
++        {
++            !mem::replace(&mut entry.inline_text_started, true)
++        } else {
++            true
++        }
++    }
++
++    fn render_text_line(&mut self, line: PendingLine) -> AnyElement {
++        let text_align = self.text_style().text_align;
+ 
+         let highlights = line
+             .source_mappings
+             .first()
+             .map(|first_mapping| {
+                 self.highlights
+-                    .highlights_for_line(first_mapping.source_index..self.current_source_index)
++                    .highlights_for_line(first_mapping.source_index..line.source_end)
+             })
+             .unwrap_or_default();
+         let text = StyledText::new(line.text).with_runs(line.runs);
+         let rendered_line = Rc::new(RenderedLine {
++            break_before: self.text_break_before(),
+             layout: text.layout().clone(),
+             visible_bounds: Cell::new(None),
+             source_mappings: line.source_mappings,
+-            source_end: self.current_source_index,
++            source_end: line.source_end,
+             language: self
+                 .code_block_stack
+                 .last()
+@@ -4328,13 +4715,11 @@ impl MarkdownElementBuilder {
+             code_chips: line.code_chips.into_iter().collect(),
+         });
+         self.rendered_lines.push(rendered_line.clone());
+-        self.append_child(
+-            RenderedLineElement {
+-                text,
+-                line: rendered_line,
+-            }
+-            .into_any_element(),
+-        );
++        RenderedLineElement {
++            text,
++            line: rendered_line,
++        }
++        .into_any_element()
+     }
+ 
+     fn build(mut self) -> RenderedMarkdown {
+@@ -4424,6 +4809,7 @@ impl IntoElement for RenderedLineElement {
+ }
+ 
+ struct RenderedLine {
++    break_before: bool,
+     layout: TextLayout,
+     visible_bounds: Cell<Option<Bounds<Pixels>>>,
+     source_mappings: Vec<SourceMapping>,
+@@ -4891,7 +5277,11 @@ impl RenderedText {
+             }
+ 
+             line_start_utf16 = line_end_utf16;
+-            if line_index + 1 < self.lines.len() {
++            if self
++                .lines
++                .get(line_index + 1)
++                .is_some_and(|next| next.break_before)
++            {
+                 line_start_utf16 += 1;
+             }
+         }
+@@ -4911,7 +5301,7 @@ impl RenderedText {
+     ) -> String {
+         let mut rendered_text = String::new();
+         for (line_index, line) in self.lines.iter().enumerate() {
+-            if line_index > 0 {
++            if line_index > 0 && line.break_before {
+                 rendered_text.push('\n');
+             }
+             rendered_text.push_str(&line.layout.text());
+@@ -4986,8 +5376,14 @@ impl RenderedText {
+     }
+ 
+     fn position_for_source_index(&self, source_index: usize) -> Option<(Point<Pixels>, Pixels)> {
+-        for line in self.lines.iter() {
+-            if source_index > line.source_end {
++        for (index, line) in self.lines.iter().enumerate() {
++            if source_index > line.source_end
++                || (source_index == line.source_end
++                    && self
++                        .lines
++                        .get(index + 1)
++                        .is_some_and(|next| !next.break_before))
++            {
+                 continue;
+             }
+             let line_source_start = line.source_mappings.first().unwrap().source_index;
+@@ -5001,17 +5397,22 @@ impl RenderedText {
+     }
+ 
+     fn surrounding_word_range(&self, source_index: usize) -> Range<usize> {
+-        for line in self.lines.iter() {
+-            if source_index > line.source_end {
+-                continue;
++        if let Some((range, selected_index)) = self.logical_line_for_source_index(source_index) {
++            let lines = &self.lines[range];
++            let line = &self.lines[selected_index];
++            let mut rendered_index_in_line = 0;
++            let mut text = String::new();
++            for fragment in lines {
++                if Rc::ptr_eq(fragment, line) {
++                    rendered_index_in_line =
++                        text.len() + line.rendered_index_for_source_index(source_index);
++                }
++                text.push_str(&fragment.layout.text());
+             }
+-
+-            let line_rendered_start = line.source_mappings.first().unwrap().rendered_index;
+-            let rendered_index_in_line =
+-                line.rendered_index_for_source_index(source_index) - line_rendered_start;
+-            let text = line.layout.text();
+-
+-            let scope = line.language.as_ref().map(|l| l.default_scope());
++            let scope = line
++                .language
++                .as_ref()
++                .map(|language| language.default_scope());
+             let classifier = CharClassifier::new(scope);
+ 
+             let mut prev_chars = text[..rendered_index_in_line].chars().rev().peekable();
+@@ -5040,27 +5441,58 @@ impl RenderedText {
+                 }
+             }
+ 
+-            return line.source_index_for_rendered_index(line_rendered_start + start)
+-                ..line.source_index_for_exclusive_rendered_end(line_rendered_start + end);
++            let source_for_offset = |mut offset: usize, exclusive: bool| {
++                for fragment in lines {
++                    let len = fragment.layout.len();
++                    if offset < len || (exclusive && offset == len) {
++                        return if exclusive {
++                            fragment.source_index_for_exclusive_rendered_end(offset)
++                        } else {
++                            fragment.source_index_for_rendered_index(offset)
++                        };
++                    }
++                    offset -= len;
++                }
++                lines.last().map_or(source_index, |line| line.source_end)
++            };
++            return source_for_offset(start, false)..source_for_offset(end, true);
+         }
+ 
+         source_index..source_index
+     }
+ 
+     fn surrounding_line_range(&self, source_index: usize) -> Range<usize> {
+-        for line in self.lines.iter() {
+-            if source_index > line.source_end {
+-                continue;
++        if let Some((range, _)) = self.logical_line_for_source_index(source_index) {
++            let lines = &self.lines[range];
++            if let Some(first) = lines.first().and_then(|line| line.source_mappings.first())
++                && let Some(last) = lines.last()
++            {
++                return first.source_index..last.source_end;
+             }
+-            let line_source_start = line.source_mappings.first().unwrap().source_index;
+-            return line_source_start..line.source_end;
+         }
+ 
+         source_index..source_index
+     }
+ 
++    fn logical_line_for_source_index(&self, source_index: usize) -> Option<(Range<usize>, usize)> {
++        let selected = self
++            .lines
++            .iter()
++            .position(|line| source_index <= line.source_end)?;
++        let mut start = selected;
++        while start > 0 && !self.lines[start].break_before {
++            start -= 1;
++        }
++        let mut end = selected + 1;
++        while end < self.lines.len() && !self.lines[end].break_before {
++            end += 1;
++        }
++        Some((start..end, selected))
++    }
++
+     fn text_for_range(&self, range: Range<usize>) -> String {
+         let mut accumulator = String::new();
++        let mut first = true;
+ 
+         for line in self.lines.iter() {
+             if range.start > line.source_end {
+@@ -5085,11 +5517,12 @@ impl RenderedText {
+             }
+             .min(text.len());
+ 
++            if !first && line.break_before {
++                accumulator.push('\n');
++            }
+             accumulator.push_str(&text[start..end]);
+-            accumulator.push('\n');
++            first = false;
+         }
+-        // Remove trailing newline
+-        accumulator.pop();
+         accumulator
+     }
+ 
+@@ -5799,7 +6232,7 @@ mod tests {
                  Some(language_registry),
                  None,
                  MarkdownOptions {
@@ -1476,7 +2025,206 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
                      ..MarkdownOptions::default()
                  },
                  cx,
-@@ -9373,4 +9544,213 @@ mod tests {
+@@ -8494,6 +8927,198 @@ mod tests {
+         rendered_text: Rc<RefCell<Option<RenderedText>>>,
+     }
+ 
++    #[gpui::test]
++    fn test_inline_math_chinese_wraps_when_resized(cx: &mut TestAppContext) {
++        ensure_theme_initialized(cx);
++        let source = "这是一段较长的说明文字，允许样本挤进原本干净的间隔带内部（$0 < \\xi_i < 1$）；后面这段中文也应该随着聊天窗口的宽度自动换行，所有文字都应该完整显示。";
++        let formula_start = source.find('$').expect("formula start");
++        let opening = source.find('（').expect("opening parenthesis");
++        let rendered_text = Rc::new(RefCell::new(None));
++        let markdown = cx.new(|cx| {
++            Markdown::new_with_options(
++                source.into(),
++                None,
++                None,
++                MarkdownOptions {
++                    render_embedded_diagrams: true,
++                    ..Default::default()
++                },
++                cx,
++            )
++        });
++        cx.run_until_parked();
++        let (_, cx) = cx.add_window_view({
++            let rendered_text = rendered_text.clone();
++            move |_, _| MarkdownTestView {
++                markdown,
++                style: MarkdownStyle::default(),
++                code_span_link: None,
++                rendered_text,
++            }
++        });
++        for width in [300., 180., 420., 240.] {
++            cx.simulate_resize(size(px(width), px(1200.)));
++            cx.run_until_parked();
++            let rendered = rendered_text.borrow().clone().expect("rendered markdown");
++            let anchor = rendered
++                .lines
++                .iter()
++                .find(|line| {
++                    line.source_mappings
++                        .first()
++                        .is_some_and(|mapping| mapping.source_index == formula_start)
++                })
++                .expect("rendered formula anchor");
++            assert_eq!(
++                anchor.layout.text().as_str(),
++                "\u{200B}",
++                "test must exercise the rendered formula"
++            );
++            let (parenthesis, height) = rendered
++                .position_for_source_index(opening)
++                .expect("parenthesis position");
++            assert!(
++                (parenthesis.y - anchor.layout.bounds().top()).abs() < height / 2.,
++                "opening parenthesis should stay with inline math at width {width}: {parenthesis:?}, {:?}",
++                anchor.layout.bounds()
++            );
++            for line in rendered.lines.iter() {
++                assert!(
++                    line.layout.bounds().right() <= px(width + 1.),
++                    "text should fit at width {width}: {:?} {:?}",
++                    line.layout.text(),
++                    line.layout.bounds()
++                );
++            }
++        }
++    }
++
++    #[gpui::test]
++    fn test_inline_math_preserves_selection_styles_and_breaks(cx: &mut TestAppContext) {
++        let source = "中文**加粗文字**和 `code_value` 与 [链接文字](https://example.com)（$x$）；继续换行。  \n下一行 $y$\nvalue 👩‍💻 e\u{301}";
++        ensure_theme_initialized(cx);
++        let markdown = cx.new(|cx| {
++            Markdown::new_with_options(
++                source.into(),
++                None,
++                None,
++                MarkdownOptions {
++                    render_embedded_diagrams: true,
++                    ..Default::default()
++                },
++                cx,
++            )
++        });
++        cx.run_until_parked();
++        let rendered = render_markdown_entity_in_view(
++            markdown,
++            MarkdownStyle {
++                inline_code: TextStyleRefinement {
++                    background_color: Some(gpui::red()),
++                    ..Default::default()
++                },
++                ..Default::default()
++            },
++            None,
++            Some(px(240.)),
++            cx,
++        );
++        let expected = "中文加粗文字和 code_value 与 链接文字（\u{200B}）；继续换行。\n下一行 \u{200B} value 👩‍💻 e\u{301}";
++        assert_eq!(rendered.text_for_range(0..source.len()), expected);
++        assert_eq!(
++            rendered.text_for_utf16_range(0..expected.encode_utf16().count(), &mut None),
++            expected
++        );
++        let word = source.find("code_value").expect("code span");
++        assert_eq!(
++            rendered.surrounding_word_range(word + 3),
++            word..word + "code_value".len()
++        );
++        let chinese = source.find("继续换行").expect("Chinese text");
++        assert_eq!(
++            rendered.surrounding_word_range(chinese + "继".len()),
++            chinese..chinese + "继续换行".len()
++        );
++        let index = source.find("换行。  ").expect("selection position");
++        assert_eq!(
++            rendered.source_index_for_utf16_index(rendered.utf16_index_for_source_index(index)),
++            index
++        );
++        assert!(
++            rendered
++                .lines
++                .iter()
++                .any(|line| !line.code_chips.is_empty()),
++            "inline code chips should survive text splitting"
++        );
++        let strong = rendered
++            .lines
++            .iter()
++            .find(|line| line.layout.text().as_str() == "加")
++            .expect("bold Chinese fragment");
++        assert_eq!(
++            strong.source_mappings[0].source_index,
++            source.find("加粗文字").expect("bold source")
++        );
++        let link = source.find("链接文字").expect("link source");
++        assert_eq!(
++            rendered
++                .link_for_source_index(link + "链".len())
++                .expect("link preserved")
++                .destination_url,
++            "https://example.com"
++        );
++    }
++
++    #[gpui::test]
++    fn test_math_paragraphs_and_plain_chinese_fit_narrow_containers(cx: &mut TestAppContext) {
++        for (source, ending) in [
++            (
++                "这是完全没有公式的中文段落，用来确认普通文字在窄窗口中仍然可以完整显示，不会越过窗口边缘。",
++                "边缘。",
++            ),
++            (
++                "- 列表中的中文（$x$）也要正确换行，后面的内容不能从聊天窗口的右边飘出去。\n\n> 引用中的公式 $y$ 和中文也应该随宽度变化。",
++                "变化。",
++            ),
++            (
++                "中文（$x$）以及 verylongidentifierwithoutspacesabcdefghijklmnopqrstuvwxyz 👩‍💻 e\u{301} 后面的中文。",
++                "中文。",
++            ),
++        ] {
++            ensure_theme_initialized(cx);
++            let markdown = cx.new(|cx| {
++                Markdown::new_with_options(
++                    source.into(),
++                    None,
++                    None,
++                    MarkdownOptions {
++                        render_embedded_diagrams: true,
++                        ..Default::default()
++                    },
++                    cx,
++                )
++            });
++            cx.run_until_parked();
++            let rendered = render_markdown_entity_in_view(
++                markdown,
++                MarkdownStyle::default(),
++                None,
++                Some(px(180.)),
++                cx,
++            );
++            for line in rendered.lines.iter() {
++                assert!(
++                    line.layout.bounds().right() <= px(181.),
++                    "text should fit: {:?} {:?}",
++                    line.layout.text(),
++                    line.layout.bounds()
++                );
++            }
++            assert!(rendered.text_for_range(0..source.len()).ends_with(ending));
++        }
++    }
++
+     impl Render for MarkdownTestView {
+         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+             let mut markdown_element =
+@@ -9373,4 +9998,213 @@ mod tests {
          (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
          (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
      ];
@@ -1498,8 +2246,8 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
 +    }
 +
 +    #[gpui::test]
-+    fn test_display_katex_fallback_is_rendered_on_its_own_line(cx: &mut TestAppContext) {
-+        let source = "text 1 $$x$$ text 2";
++    fn test_display_math_fallback_is_rendered_on_its_own_line(cx: &mut TestAppContext) {
++        let source = "text 1 $$x^1^2$$ text 2";
 +        let rendered = render_markdown_with_options(
 +            source,
 +            None,
@@ -1512,15 +2260,15 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
 +
 +        assert_eq!(
 +            rendered.text_for_range(0..source.len()),
-+            "text 1 \n$$x$$\n text 2"
++            "text 1 \n$$x^1^2$$\n text 2"
 +        );
 +    }
 +
 +    #[gpui::test]
-+    fn test_multiple_display_katex_fallbacks_are_rendered_on_their_own_lines(
++    fn test_multiple_display_math_fallbacks_are_rendered_on_their_own_lines(
 +        cx: &mut TestAppContext,
 +    ) {
-+        let source = "text 1 $$x$$ text 2 $$y$$ text 3";
++        let source = "text 1 $$x^1^2$$ text 2 $$y^1^2$$ text 3";
 +        let rendered = render_markdown_with_options(
 +            source,
 +            None,
@@ -1533,13 +2281,13 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
 +
 +        assert_eq!(
 +            rendered.text_for_range(0..source.len()),
-+            "text 1 \n$$x$$\n text 2 \n$$y$$\n text 3"
++            "text 1 \n$$x^1^2$$\n text 2 \n$$y^1^2$$\n text 3"
 +        );
 +    }
 +
 +    #[gpui::test]
-+    fn test_inline_katex_fallback_stays_inline(cx: &mut TestAppContext) {
-+        let source = "text $x$ text";
++    fn test_inline_math_fallback_stays_inline(cx: &mut TestAppContext) {
++        let source = "text $x^1^2$ text";
 +        let rendered = render_markdown_with_options(
 +            source,
 +            None,
@@ -1550,7 +2298,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da3
 +            cx,
 +        );
 +
-+        assert_eq!(rendered.text_for_range(0..source.len()), "text $x$ text");
++        assert_eq!(rendered.text_for_range(0..source.len()), source);
 +    }
 +
 +    #[gpui::test]
