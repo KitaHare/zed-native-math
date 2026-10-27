@@ -2,10 +2,11 @@
 
 ## Unreleased
 
+- Keep nested lists and code blocks below inline math text in tight list items.
 - Wrap Chinese text around inline math at Unicode word boundaries as the container resizes.
 - Keep opening and closing punctuation with inline formulas.
 - Preserve selection, code chips, links and explicit line breaks across inline layout fragments.
-- Validate the full Markdown suite: 210 tests pass.
+- Validate the full Markdown suite: 213 tests pass.
 
 ## 0.1.0 — experimental source release
 

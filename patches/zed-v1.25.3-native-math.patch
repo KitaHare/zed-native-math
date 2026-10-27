@@ -1104,7 +1104,7 @@ index 0000000000000000000000000000000000000000..10e8f02293cf4b23e26c54074993981a
 +    }
 +}
 diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
-index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02f6ebc486 100644
+index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..415b427564741d5e6ae077c54723575e763068c3 100644
 --- a/crates/markdown/src/markdown.rs
 +++ b/crates/markdown/src/markdown.rs
 @@ -1,4 +1,5 @@
@@ -1594,7 +1594,23 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
              html_comment: false,
              rendered_footnote_separator: false,
              base_text_style,
-@@ -4013,7 +4255,14 @@ impl MarkdownElementBuilder {
+@@ -3941,6 +4183,15 @@ impl MarkdownElementBuilder {
+         let mut div = div.into();
+         self.flush_text();
+ 
++        if let Some(parent) = self.div_stack.last_mut()
++            && parent.line_break_mode == LineBreakMode::InlineMath
++        {
++            // Tight lists omit paragraph nodes, so the item itself can contain
++            // the inline math flow. Nested blocks still need their own row.
++            div = div.w_full().flex_none().min_w_0();
++            parent.inline_text_started = false;
++        }
++
+         if range.start == 0 {
+             // Remove the top margin on the first element.
+             div.style().refine(&StyleRefinement {
+@@ -4013,7 +4264,14 @@ impl MarkdownElementBuilder {
      }
  
      fn push_line_break(&mut self, source_range: Range<usize>) {
@@ -1610,7 +1626,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
              self.modify_current_div(|el| el.child(div().w_full().h_0()));
          } else {
              self.push_text("\n", source_range);
-@@ -4023,7 +4272,12 @@ impl MarkdownElementBuilder {
+@@ -4023,7 +4281,12 @@ impl MarkdownElementBuilder {
      fn push_soft_break(&mut self, source_range: Range<usize>) {
          // A soft break right after an item in flex wrap container would otherwise
          // render as a stray leading space before the next wrapped item.
@@ -1624,7 +1640,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
              return;
          }
          self.push_text(" ", source_range);
-@@ -4036,7 +4290,7 @@ impl MarkdownElementBuilder {
+@@ -4036,7 +4299,7 @@ impl MarkdownElementBuilder {
      fn uses_flex_line_breaks(&self) -> bool {
          self.div_stack
              .last()
@@ -1633,7 +1649,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
      }
  
      fn modify_current_div(&mut self, f: impl FnOnce(AnyDiv) -> AnyDiv) {
-@@ -4094,6 +4348,79 @@ impl MarkdownElementBuilder {
+@@ -4094,6 +4357,79 @@ impl MarkdownElementBuilder {
          );
      }
  
@@ -1713,7 +1729,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
      fn push_list(&mut self, bullet_index: Option<u64>) {
          self.list_stack.push(ListStackEntry { bullet_index });
      }
-@@ -4158,7 +4485,7 @@ impl MarkdownElementBuilder {
+@@ -4158,7 +4494,7 @@ impl MarkdownElementBuilder {
              source_index: source_range.start,
          });
          self.pending_line.text.push_str(text);
@@ -1722,7 +1738,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
  
          // Compute the base text style once
          let text_style = self.text_style();
-@@ -4209,7 +4536,7 @@ impl MarkdownElementBuilder {
+@@ -4209,7 +4545,7 @@ impl MarkdownElementBuilder {
                  .text
                  .truncate(self.pending_line.text.len() - 1);
              self.pending_line.runs.last_mut().unwrap().len -= 1;
@@ -1731,7 +1747,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
          }
      }
  
-@@ -4271,11 +4598,20 @@ impl MarkdownElementBuilder {
+@@ -4271,11 +4607,20 @@ impl MarkdownElementBuilder {
      }
  
      fn render_source_anchor(&mut self, source_range: Range<usize>) -> AnyElement {
@@ -1753,7 +1769,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
              layout: styled_text.layout().clone(),
              visible_bounds: Cell::new(None),
              source_mappings: vec![SourceMapping {
-@@ -4298,26 +4634,77 @@ impl MarkdownElementBuilder {
+@@ -4298,26 +4643,77 @@ impl MarkdownElementBuilder {
      }
  
      fn flush_text(&mut self) {
@@ -1835,7 +1851,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
              language: self
                  .code_block_stack
                  .last()
-@@ -4328,13 +4715,11 @@ impl MarkdownElementBuilder {
+@@ -4328,13 +4724,11 @@ impl MarkdownElementBuilder {
              code_chips: line.code_chips.into_iter().collect(),
          });
          self.rendered_lines.push(rendered_line.clone());
@@ -1854,7 +1870,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
      }
  
      fn build(mut self) -> RenderedMarkdown {
-@@ -4424,6 +4809,7 @@ impl IntoElement for RenderedLineElement {
+@@ -4424,6 +4818,7 @@ impl IntoElement for RenderedLineElement {
  }
  
  struct RenderedLine {
@@ -1862,7 +1878,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
      layout: TextLayout,
      visible_bounds: Cell<Option<Bounds<Pixels>>>,
      source_mappings: Vec<SourceMapping>,
-@@ -4891,7 +5277,11 @@ impl RenderedText {
+@@ -4891,7 +5286,11 @@ impl RenderedText {
              }
  
              line_start_utf16 = line_end_utf16;
@@ -1875,7 +1891,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
                  line_start_utf16 += 1;
              }
          }
-@@ -4911,7 +5301,7 @@ impl RenderedText {
+@@ -4911,7 +5310,7 @@ impl RenderedText {
      ) -> String {
          let mut rendered_text = String::new();
          for (line_index, line) in self.lines.iter().enumerate() {
@@ -1884,7 +1900,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
                  rendered_text.push('\n');
              }
              rendered_text.push_str(&line.layout.text());
-@@ -4986,8 +5376,14 @@ impl RenderedText {
+@@ -4986,8 +5385,14 @@ impl RenderedText {
      }
  
      fn position_for_source_index(&self, source_index: usize) -> Option<(Point<Pixels>, Pixels)> {
@@ -1901,7 +1917,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
                  continue;
              }
              let line_source_start = line.source_mappings.first().unwrap().source_index;
-@@ -5001,17 +5397,22 @@ impl RenderedText {
+@@ -5001,17 +5406,22 @@ impl RenderedText {
      }
  
      fn surrounding_word_range(&self, source_index: usize) -> Range<usize> {
@@ -1934,7 +1950,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
              let classifier = CharClassifier::new(scope);
  
              let mut prev_chars = text[..rendered_index_in_line].chars().rev().peekable();
-@@ -5040,27 +5441,58 @@ impl RenderedText {
+@@ -5040,27 +5450,58 @@ impl RenderedText {
                  }
              }
  
@@ -2000,7 +2016,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
  
          for line in self.lines.iter() {
              if range.start > line.source_end {
-@@ -5085,11 +5517,12 @@ impl RenderedText {
+@@ -5085,11 +5526,12 @@ impl RenderedText {
              }
              .min(text.len());
  
@@ -2016,7 +2032,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
          accumulator
      }
  
-@@ -5799,7 +6232,7 @@ mod tests {
+@@ -5799,7 +6241,7 @@ mod tests {
                  Some(language_registry),
                  None,
                  MarkdownOptions {
@@ -2025,10 +2041,180 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
                      ..MarkdownOptions::default()
                  },
                  cx,
-@@ -8494,6 +8927,198 @@ mod tests {
+@@ -8494,6 +8936,368 @@ mod tests {
          rendered_text: Rc<RefCell<Option<RenderedText>>>,
      }
  
++    #[gpui::test]
++    fn test_inline_math_nested_lists_keep_block_layout_when_resized(cx: &mut TestAppContext) {
++        ensure_theme_initialized(cx);
++        for (marker, indent) in [("- ", "  "), ("1. ", "   "), ("- [ ] ", "  ")] {
++            let source = format!(
++                "{marker}于是引入松弛变量（Slack Variable） $\\xi_i$，允许部分样本打破“完美边界”：\n\
++                 {indent}- 允许样本挤进原本干净的间隔带内部（$0 < \\xi_i < 1$）；\n\
++                 {indent}- 甚至允许个别离群点直接被分错（$\\xi_i > 1$）。\n"
++            );
++            let parent_start = source.find("于是").expect("parent start");
++            let parent_end = source.find('：').expect("parent colon");
++            let first_start = source.find("允许样本挤进").expect("first child");
++            let first_end = source.find('；').expect("first child end");
++            let second_start = source.find("甚至允许").expect("second child");
++            let formula_start = source.find('$').expect("parent formula");
++            let rendered_text = Rc::new(RefCell::new(None));
++            let markdown = cx.new(|cx| {
++                Markdown::new_with_options(
++                    source.clone().into(),
++                    None,
++                    None,
++                    MarkdownOptions {
++                        render_embedded_diagrams: true,
++                        ..Default::default()
++                    },
++                    cx,
++                )
++            });
++            cx.run_until_parked();
++            let (_, cx) = cx.add_window_view({
++                let rendered_text = rendered_text.clone();
++                move |_, _| MarkdownTestView {
++                    markdown,
++                    style: MarkdownStyle::default(),
++                    code_span_link: None,
++                    rendered_text,
++                }
++            });
++            for width in [1600., 900., 280., 1600.] {
++                cx.simulate_resize(size(px(width), px(1400.)));
++                cx.run_until_parked();
++                let rendered = rendered_text
++                    .borrow()
++                    .clone()
++                    .expect("rendered nested list");
++                assert!(
++                    rendered.lines.iter().any(|line| line
++                        .source_mappings
++                        .first()
++                        .is_some_and(|mapping| mapping.source_index == formula_start)
++                        && line.layout.text().as_str() == "\u{200B}"),
++                    "test must exercise rendered math"
++                );
++                let (parent, _) = rendered
++                    .position_for_source_index(parent_start)
++                    .expect("parent position");
++                let (colon, height) = rendered
++                    .position_for_source_index(parent_end)
++                    .expect("colon position");
++                let (first, _) = rendered
++                    .position_for_source_index(first_start)
++                    .expect("child position");
++                let (first_last, child_height) = rendered
++                    .position_for_source_index(first_end)
++                    .expect("child end position");
++                let (second, _) = rendered
++                    .position_for_source_index(second_start)
++                    .expect("second child position");
++                assert!(
++                    first.y + px(0.5) >= colon.y + height,
++                    "nested list must start below its parent at width {width}, marker {marker:?}: parent {colon:?}, child {first:?}"
++                );
++                assert!(first.x > parent.x, "nested list should retain indentation");
++                assert!(
++                    second.y + px(0.5) >= first_last.y + child_height,
++                    "child items should stay vertically ordered"
++                );
++                for line in rendered.lines.iter() {
++                    assert!(
++                        line.layout.bounds().right() <= px(width + 1.),
++                        "nested text must fit: {:?}",
++                        line.layout.bounds()
++                    );
++                }
++            }
++        }
++    }
++
++    #[gpui::test]
++    fn test_inline_math_three_level_lists_preserve_order_and_copy(cx: &mut TestAppContext) {
++        let source =
++            "- 一级 $x$：\n  - 二级 $y$：\n    - 三级 $z$。\n  - 同级 $w$。\n- 末项 $q$。\n";
++        for width in [1200., 220.] {
++            ensure_theme_initialized(cx);
++            let markdown = cx.new(|cx| {
++                Markdown::new_with_options(
++                    source.into(),
++                    None,
++                    None,
++                    MarkdownOptions {
++                        render_embedded_diagrams: true,
++                        ..Default::default()
++                    },
++                    cx,
++                )
++            });
++            cx.run_until_parked();
++            let rendered = render_markdown_entity_in_view(
++                markdown,
++                MarkdownStyle::default(),
++                None,
++                Some(px(width)),
++                cx,
++            );
++            let mut positions = Vec::new();
++            for label in ["一级", "二级", "三级", "同级", "末项"] {
++                positions.push(
++                    rendered
++                        .position_for_source_index(source.find(label).expect("list item source"))
++                        .expect("list item position")
++                        .0,
++                );
++            }
++            for pair in positions.windows(2) {
++                assert!(
++                    pair[1].y > pair[0].y,
++                    "nested and sibling items must stay in source order: {positions:?}"
++                );
++            }
++            assert!(positions[2].x > positions[1].x && positions[1].x > positions[0].x);
++            assert_eq!(positions[3].x, positions[1].x);
++            assert_eq!(positions[4].x, positions[0].x);
++            assert_eq!(
++                rendered.text_for_range(0..source.len()),
++                "一级 \u{200B}：\n二级 \u{200B}：\n三级 \u{200B}。\n同级 \u{200B}。\n末项 \u{200B}。"
++            );
++        }
++    }
++
++    #[gpui::test]
++    fn test_inline_math_resumes_below_code_block_in_tight_list(cx: &mut TestAppContext) {
++        let source = "- 一级 $x$：\n  ```txt\n  代码块\n  ```\n  尾段 $y$。\n";
++        let rendered = render_markdown_with_options(
++            source,
++            None,
++            MarkdownOptions {
++                render_embedded_diagrams: true,
++                ..Default::default()
++            },
++            cx,
++        );
++        let (parent, _) = rendered
++            .position_for_source_index(source.find("一级").expect("parent source"))
++            .expect("parent position");
++        let (code, _) = rendered
++            .position_for_source_index(source.find("代码块").expect("code source"))
++            .expect("code position");
++        let (tail, _) = rendered
++            .position_for_source_index(source.find("尾段").expect("tail source"))
++            .expect("tail position");
++        assert!(
++            code.y > parent.y && tail.y > code.y,
++            "blocks must stay vertically ordered: {parent:?}, {code:?}, {tail:?}"
++        );
++        assert_eq!(
++            rendered.text_for_range(0..source.len()),
++            "一级 \u{200B}：\n代码块\n尾段 \u{200B}。"
++        );
++    }
++
 +    #[gpui::test]
 +    fn test_inline_math_chinese_wraps_when_resized(cx: &mut TestAppContext) {
 +        ensure_theme_initialized(cx);
@@ -2224,7 +2410,7 @@ index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..66dc74a290af4ff60e4c182e595d0e02
      impl Render for MarkdownTestView {
          fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
              let mut markdown_element =
-@@ -9373,4 +9998,213 @@ mod tests {
+@@ -9373,4 +10177,213 @@ mod tests {
          (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
          (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
      ];

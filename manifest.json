@@ -8,7 +8,7 @@
   },
   "patch": {
     "file": "patches/zed-v1.25.3-native-math.patch",
-    "sha256": "2d843aef35e314a1f8192307d3783ad0452995de58ce16d2912256158d283b85"
+    "sha256": "eb1ee38acbe01016b55f3f71d6967b6fb993f25abcdd98d7905e581243c7b963"
   },
   "tested_platforms": [
     "macOS on Apple Silicon"
@@ -19,7 +19,7 @@
     "commit": "0676a0c"
   },
   "verification": {
-    "native_math_tests_passed": 14,
+    "native_math_tests_passed": 17,
     "native_application_built": true,
     "agent_chat_rendering_confirmed": true,
     "full_markdown_suite_run": true,
@@ -27,7 +27,7 @@
     "patch_applies_to_clean_checkout": true,
     "source_matches_tested_checkout": true,
     "macos_packaging_helper_verified": true,
-    "full_markdown_tests_passed": 210
+    "full_markdown_tests_passed": 213
   },
   "automatic_updater_included": false,
   "rust_toolchain": "1.98.1"
