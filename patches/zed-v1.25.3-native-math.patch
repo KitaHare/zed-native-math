@@ -1,0 +1,2196 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index b1577821fb649ddc8a23c2fffe61657b616d9310..a4677a38c024da32b71b057dc5fd2e66d7e87905 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2,6 +2,22 @@
+ # It is not intended for manual editing.
+ version = 4
+ 
++[[package]]
++name = "ab_glyph"
++version = "0.2.32"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "01c0457472c38ea5bd1c3b5ada5e368271cb550be7a4ca4a0b4634e9913f6cc2"
++dependencies = [
++ "ab_glyph_rasterizer",
++ "owned_ttf_parser",
++]
++
++[[package]]
++name = "ab_glyph_rasterizer"
++version = "0.1.10"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
++
+ [[package]]
+ name = "accesskit"
+ version = "0.24.1"
+@@ -6158,6 +6174,17 @@ version = "0.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c942e64b20ecd39933d5ff938ca4fdb6ef0d298cc3855b231179a5ef0b24948d"
+ 
++[[package]]
++name = "fancy-regex"
++version = "0.14.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "6e24cb5a94bcae1e5408b0effca5cd7172ea3c5755049c5f3af4cd283a165298"
++dependencies = [
++ "bit-set 0.8.0",
++ "regex-automata",
++ "regex-syntax",
++]
++
+ [[package]]
+ name = "fancy-regex"
+ version = "0.19.0"
+@@ -9178,7 +9205,7 @@ dependencies = [
+  "bytecount",
+  "data-encoding",
+  "email_address",
+- "fancy-regex",
++ "fancy-regex 0.19.0",
+  "fraction",
+  "getrandom 0.3.4",
+  "idna",
+@@ -10519,6 +10546,10 @@ dependencies = [
+  "mermaid_render",
+  "node_runtime",
+  "pulldown-cmark 0.13.4",
++ "ratex-layout",
++ "ratex-parser",
++ "ratex-svg",
++ "ratex-types",
+  "settings",
+  "smallvec",
+  "stacksafe",
+@@ -12410,6 +12441,15 @@ version = "0.5.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
+ 
++[[package]]
++name = "owned_ttf_parser"
++version = "0.25.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
++dependencies = [
++ "ttf-parser",
++]
++
+ [[package]]
+ name = "p256"
+ version = "0.11.1"
+@@ -13851,7 +13891,7 @@ dependencies = [
+  "dap",
+  "encoding_rs",
+  "extension",
+- "fancy-regex",
++ "fancy-regex 0.19.0",
+  "file_content",
+  "fs",
+  "futures 0.3.34",
+@@ -14606,6 +14646,114 @@ version = "1.7.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "973443cf09a9c8656b574a866ab68dfa19f0867d0340648c7d2f6a71b8a8ea68"
+ 
++[[package]]
++name = "ratex-font"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "afbff82873da9cb006b75910c4978ccf5a0e42b95e92b45f0361751e83134eb3"
++dependencies = [
++ "phf 0.11.3",
++ "ratex-types",
++]
++
++[[package]]
++name = "ratex-font-loader"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "288ab95dd208f89b48e40dde73ad49f220e09fce1bb1ba7fb94b9b9da1c3638d"
++dependencies = [
++ "ab_glyph",
++ "ratex-font",
++ "ratex-katex-fonts",
++ "ratex-types",
++ "ratex-unicode-font",
++]
++
++[[package]]
++name = "ratex-katex-fonts"
++version = "0.1.15"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "729e7ad006c577bdf21d0fe11cf93889b816c06195dddc0dfa4d94cd2d894799"
++dependencies = [
++ "rust-embed",
++]
++
++[[package]]
++name = "ratex-layout"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "13a343bc5b02d64d5569dd71c388386f140f7caef2aa17f1d90af40db8194249"
++dependencies = [
++ "ratex-font",
++ "ratex-parser",
++ "ratex-types",
++ "serde_json",
++]
++
++[[package]]
++name = "ratex-lexer"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "34501a6076195853f6888a4b725b2fa4e6c58708f817ad22d48b70fd6ad47354"
++dependencies = [
++ "ratex-types",
++ "serde",
++ "thiserror 1.0.69",
++]
++
++[[package]]
++name = "ratex-parser"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9e9c6108fa2f093a2f71f4212d698796777ed86e8a10dd00d23712944fa6e403"
++dependencies = [
++ "fancy-regex 0.14.0",
++ "ratex-font",
++ "ratex-lexer",
++ "ratex-types",
++ "regex",
++ "regex-lite",
++ "serde",
++ "serde_json",
++ "thiserror 1.0.69",
++ "unicode-normalization",
++]
++
++[[package]]
++name = "ratex-svg"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f532f3ee134b400b8d98d4583254aa412fdac5315ce049bc2e85317751cd47d9"
++dependencies = [
++ "ab_glyph",
++ "base64 0.22.1",
++ "ratex-font",
++ "ratex-font-loader",
++ "ratex-katex-fonts",
++ "ratex-types",
++ "ratex-unicode-font",
++]
++
++[[package]]
++name = "ratex-types"
++version = "0.1.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "8ff31d1010354f0e22ade3ded5bb108d28a7239d0fee8e187a045a89100590c2"
++dependencies = [
++ "serde",
++]
++
++[[package]]
++name = "ratex-unicode-font"
++version = "0.1.15"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1747dee726d3f05c96fd13f123693d350f9cba572bbdfaf7fc4bbe43948c7129"
++dependencies = [
++ "fontdb",
++ "system-fonts",
++ "ttf-parser",
++]
++
+ [[package]]
+ name = "rav1e"
+ version = "0.8.1"
+@@ -17709,6 +17857,17 @@ dependencies = [
+  "version-compare",
+ ]
+ 
++[[package]]
++name = "system-fonts"
++version = "0.1.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "46ba78ea149d4bb0626dacad10aa789eedc83395889890a0e6e7ec69a4577442"
++dependencies = [
++ "fontdb",
++ "sys-locale",
++ "web-sys",
++]
++
+ [[package]]
+ name = "system_specs"
+ version = "0.1.0"
+@@ -18796,7 +18955,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2fb391ac70462b3097a755618fbf9c8f95ecc1eb379a414f7b46f202ed10db1f"
+ dependencies = [
+  "cc",
+- "windows-targets 0.48.5",
++ "windows-targets 0.52.6",
+ ]
+ 
+ [[package]]
+@@ -20612,7 +20771,7 @@ dependencies = [
+  "objc2-foundation 0.3.2",
+  "objc2-metal 0.3.2",
+  "objc2-quartz-core 0.3.2",
+- "ordered-float 4.6.0",
++ "ordered-float 5.5.0",
+  "profiling",
+  "range-alloc",
+  "raw-window-handle",
+diff --git a/Cargo.toml b/Cargo.toml
+index 411682a87c9116904e86a0e442162ee2c74eb108..0cdee8673d41346305b4a0337ce454aa1dfa9042 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -807,6 +807,10 @@ prost-types = "0.14"
+ protox = "0.9"
+ proxyvars = "0.2"
+ pulldown-cmark = { version = "0.13.0", default-features = false }
++ratex-layout = "=0.1.9"
++ratex-parser = "=0.1.9"
++ratex-svg = { version = "=0.1.9", features = ["embed-fonts"] }
++ratex-types = "=0.1.9"
+ quick-xml = "0.41"
+ quote = "1.0.9"
+ rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }
+diff --git a/crates/acp_thread/src/acp_thread.rs b/crates/acp_thread/src/acp_thread.rs
+index 0d4c316fa89f6cdf455c1c3391c5bcf3d9abf24e..40b12473dceb58d6c5463cc2e8569853caec4096 100644
+--- a/crates/acp_thread/src/acp_thread.rs
++++ b/crates/acp_thread/src/acp_thread.rs
+@@ -2641,7 +2641,7 @@ impl ContentBlock {
+                 Some(language_registry.clone()),
+                 None,
+                 MarkdownOptions {
+-                    render_mermaid_diagrams: true,
++                    render_embedded_diagrams: true,
+                     render_metadata_blocks: true,
+                     ..Default::default()
+                 },
+@@ -3924,7 +3924,7 @@ impl AcpThread {
+         })
+     }
+ 
+-    pub fn invalidate_mermaid_caches(&self, cx: &mut App) {
++    pub fn invalidate_embedded_diagrams_caches(&self, cx: &mut App) {
+         for entry in &self.entries {
+             let chunks = match entry {
+                 AgentThreadEntry::AssistantMessage(message) => &message.chunks,
+@@ -3937,7 +3937,7 @@ impl AcpThread {
+                 };
+                 for markdown in block.markdowns() {
+                     markdown.update(cx, |markdown, cx| {
+-                        markdown.invalidate_mermaid_cache(cx);
++                        markdown.invalidate_embedded_diagrams_caches(cx);
+                     });
+                 }
+             }
+diff --git a/crates/agent_ui/src/conversation_view.rs b/crates/agent_ui/src/conversation_view.rs
+index 71aa2703c89a31dc59fca5385819c742bd36aa7f..8fd5099e569e819efdb122f96b76d209dec44dca 100644
+--- a/crates/agent_ui/src/conversation_view.rs
++++ b/crates/agent_ui/src/conversation_view.rs
+@@ -1017,7 +1017,10 @@ impl ConversationView {
+         let code_span_resolver = AgentCodeSpanResolver::new(&project.downgrade(), cx);
+         let mut subscriptions = vec![
+             cx.observe_global_in::<SettingsStore>(window, Self::agent_ui_font_size_changed),
+-            cx.observe_global_in::<SettingsStore>(window, Self::invalidate_mermaid_caches),
++            cx.observe_global_in::<SettingsStore>(
++                window,
++                Self::invalidate_embedded_diagrams_caches,
++            ),
+             cx.observe_global_in::<AgentUiFontSize>(window, Self::agent_ui_font_size_changed),
+             cx.observe_global_in::<AgentBufferFontSize>(window, Self::agent_ui_font_size_changed),
+             cx.subscribe_in(
+@@ -3472,7 +3475,11 @@ impl ConversationView {
+         }
+     }
+ 
+-    fn invalidate_mermaid_caches(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
++    fn invalidate_embedded_diagrams_caches(
++        &mut self,
++        _window: &mut Window,
++        cx: &mut Context<Self>,
++    ) {
+         let current_theme_id = cx.theme().id.clone();
+         if self.last_theme_id.as_ref() == Some(&current_theme_id) {
+             return;
+@@ -3489,7 +3496,7 @@ impl ConversationView {
+                 .collect();
+             for thread in threads {
+                 thread.update(cx, |thread, cx| {
+-                    thread.invalidate_mermaid_caches(cx);
++                    thread.invalidate_embedded_diagrams_caches(cx);
+                 });
+             }
+         }
+diff --git a/crates/markdown/Cargo.toml b/crates/markdown/Cargo.toml
+index e6f258c50192133c4446073e7b926216e1db48d6..42da6b0d52b6253b569274c2e5c78c38f54d4c6b 100644
+--- a/crates/markdown/Cargo.toml
++++ b/crates/markdown/Cargo.toml
+@@ -30,6 +30,10 @@ log.workspace = true
+ markup5ever_rcdom.workspace = true
+ mermaid_render.workspace = true
+ pulldown-cmark.workspace = true
++ratex-layout.workspace = true
++ratex-parser.workspace = true
++ratex-svg.workspace = true
++ratex-types.workspace = true
+ settings.workspace = true
+ smallvec.workspace = true
+ stacksafe.workspace = true
+diff --git a/crates/markdown/src/katex.rs b/crates/markdown/src/katex.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..cbd8359ada37cd93d1b5334ec3beb9965d915bd2
+--- /dev/null
++++ b/crates/markdown/src/katex.rs
+@@ -0,0 +1,744 @@
++use collections::HashMap;
++use gpui::{AnyElement, Context, Hsla, ImageSource, RenderImage, Rgba, StyledText, Task, img};
++use ratex_layout::{LayoutOptions, layout, to_display_list};
++use ratex_parser::parse;
++use ratex_svg::{SvgOptions, render_to_svg};
++use ratex_types::{color::Color, math_style::MathStyle};
++use std::collections::BTreeMap;
++use std::ops::Range;
++use std::sync::{Arc, OnceLock};
++use ui::prelude::*;
++use util::ResultExt;
++
++use crate::parser::MarkdownEvent;
++
++use super::{Markdown, ParsedMarkdown};
++
++type KatexDiagramCache = HashMap<ParsedMarkdownKatexDiagramContents, Arc<CachedKatexDiagram>>;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
++pub(crate) enum KatexRenderMode {
++    Inline,
++    Display,
++}
++
++#[derive(Clone, Debug)]
++pub(crate) struct ParsedMarkdownKatexDiagram {
++    pub(crate) source_range: Range<usize>,
++    pub(crate) contents: SharedString,
++    pub(crate) mode: KatexRenderMode,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Hash)]
++pub(crate) struct ParsedMarkdownKatexDiagramContents {
++    pub(crate) contents: SharedString,
++    pub(crate) mode: KatexRenderMode,
++    pub(crate) font_size: u32,
++    pub(crate) color: [u8; 4],
++}
++
++#[derive(Default, Clone)]
++pub(crate) struct KatexState {
++    pub(crate) cache: KatexDiagramCache,
++    occurrences: Vec<KatexOccurrenceState>,
++}
++
++#[derive(Clone, Debug)]
++struct KatexOccurrenceState {
++    source_start: usize,
++    contents: SharedString,
++    mode: KatexRenderMode,
++    rendered_key: Option<ParsedMarkdownKatexDiagramContents>,
++}
++
++pub(crate) struct CachedKatexDiagram {
++    render_image: Arc<OnceLock<anyhow::Result<Arc<RenderImage>>>>,
++    fallback_image: Option<Arc<RenderImage>>,
++    _task: Task<()>,
++}
++
++impl KatexState {
++    pub(crate) fn clear(&mut self) {
++        self.cache.clear();
++        self.occurrences.clear();
++    }
++
++    pub(crate) fn update(&mut self, parsed: &ParsedMarkdown, _cx: &mut Context<Markdown>) {
++        let old_occurrences = std::mem::take(&mut self.occurrences);
++        let can_migrate_rendered_keys = old_occurrences.len() == parsed.katex_diagrams.len();
++
++        self.occurrences = parsed
++            .katex_diagrams
++            .iter()
++            .enumerate()
++            .map(|(idx, (source_start, katex_diagram))| {
++                let rendered_key = can_migrate_rendered_keys
++                    .then(|| old_occurrences[idx].rendered_key.clone())
++                    .flatten();
++
++                KatexOccurrenceState {
++                    source_start: *source_start,
++                    contents: katex_diagram.contents.clone(),
++                    mode: katex_diagram.mode,
++                    rendered_key,
++                }
++            })
++            .collect();
++
++        Self::retain_active_formula_cache_entries(&mut self.cache, &self.occurrences, true);
++    }
++
++    fn retain_active_formula_cache_entries(
++        cache: &mut KatexDiagramCache,
++        active_occurrences: &[KatexOccurrenceState],
++        retain_rendered_keys: bool,
++    ) {
++        cache.retain(|content, _| {
++            active_occurrences.iter().any(|occurrence| {
++                occurrence.contents == content.contents && occurrence.mode == content.mode
++                    || retain_rendered_keys
++                        && occurrence
++                            .rendered_key
++                            .as_ref()
++                            .is_some_and(|rendered_key| rendered_key == content)
++            })
++        });
++    }
++
++    fn get_fallback_image_for_source_start(&self, source_start: usize) -> Option<Arc<RenderImage>> {
++        let rendered_key = self
++            .occurrences
++            .iter()
++            .find(|occurrence| occurrence.source_start == source_start)?
++            .rendered_key
++            .as_ref()?;
++
++        Self::cached_fallback_image(&self.cache, rendered_key)
++    }
++
++    fn cached_fallback_image(
++        cache: &KatexDiagramCache,
++        rendered_key: &ParsedMarkdownKatexDiagramContents,
++    ) -> Option<Arc<RenderImage>> {
++        cache.get(rendered_key).and_then(|cached| {
++            cached
++                .render_image
++                .get()
++                .and_then(|result| result.as_ref().ok().cloned())
++                .or_else(|| cached.fallback_image.clone())
++        })
++    }
++
++    fn occurrence_for_source_start_mut(
++        &mut self,
++        source_start: usize,
++    ) -> Option<&mut KatexOccurrenceState> {
++        self.occurrences
++            .iter_mut()
++            .find(|occurrence| occurrence.source_start == source_start)
++    }
++
++    pub(crate) fn should_show_source_text_for_contents(
++        &self,
++        contents: &ParsedMarkdownKatexDiagramContents,
++    ) -> bool {
++        let Some(cached) = self.cache.get(contents) else {
++            return true;
++        };
++
++        match cached.render_image.get() {
++            Some(Ok(_)) => false,
++            Some(Err(_)) => true,
++            None => cached.fallback_image.is_none(),
++        }
++    }
++
++    pub(crate) fn ensure_cached_contents(
++        &mut self,
++        source_start: usize,
++        contents: &ParsedMarkdownKatexDiagramContents,
++        cx: &mut Context<Markdown>,
++    ) {
++        let fallback_image = if self.cache.contains_key(contents) {
++            None
++        } else {
++            self.get_fallback_image_for_source_start(source_start)
++        };
++
++        self.cache
++            .entry(contents.clone())
++            .or_insert_with_key(|contents| {
++                Arc::new(CachedKatexDiagram::new(
++                    contents.clone(),
++                    fallback_image.clone(),
++                    cx,
++                ))
++            });
++
++        if let Some(occurrence) = self.occurrence_for_source_start_mut(source_start) {
++            occurrence.rendered_key = Some(contents.clone());
++        }
++        Self::retain_active_formula_cache_entries(&mut self.cache, &self.occurrences, false);
++    }
++}
++
++impl CachedKatexDiagram {
++    fn new(
++        contents: ParsedMarkdownKatexDiagramContents,
++        fallback_image: Option<Arc<RenderImage>>,
++        cx: &mut Context<Markdown>,
++    ) -> Self {
++        let render_image = Arc::new(OnceLock::<anyhow::Result<Arc<RenderImage>>>::new());
++        let render_image_clone = render_image.clone();
++        let svg_renderer = cx.svg_renderer();
++
++        let task = cx.spawn(async move |this, cx| {
++            let value = cx
++                .background_spawn(async move {
++                    let ast = parse(contents.contents.as_ref())
++                        .map_err(|error| anyhow::anyhow!("Failed to parse katex: {error}"))?;
++                    let layout_options = LayoutOptions::default()
++                        .with_style(math_style(contents.mode))
++                        .with_color(rgba_bytes_to_ratex_color(contents.color));
++                    let layout_box = layout(&ast, &layout_options);
++                    let display_list = to_display_list(&layout_box);
++                    let svg = render_to_svg(
++                        &display_list,
++                        &SvgOptions {
++                            font_size: contents.font_size as f64 / 100.0,
++                            padding: f64::from(padding_for_mode(contents.mode)),
++                            stroke_width: 1.0,
++                            embed_glyphs: true,
++                            ..SvgOptions::default()
++                        },
++                    );
++
++                    svg_renderer
++                        .render_single_frame(svg.as_bytes(), 1.0)
++                        .map_err(|error| anyhow::anyhow!("Failed to decode katex render: {error}"))
++                })
++                .await;
++            if render_image_clone.set(value).is_err() {
++                log::error!("Math render completed more than once");
++            }
++            this.update(cx, |_, cx| {
++                cx.notify();
++            })
++            .log_err();
++        });
++
++        Self {
++            render_image,
++            fallback_image,
++            _task: task,
++        }
++    }
++
++    #[cfg(test)]
++    fn new_for_test(
++        render_image: Option<Arc<RenderImage>>,
++        fallback_image: Option<Arc<RenderImage>>,
++    ) -> Self {
++        let result = Arc::new(OnceLock::new());
++        if let Some(render_image) = render_image {
++            let _ = result.set(Ok(render_image));
++        }
++        Self {
++            render_image: result,
++            fallback_image,
++            _task: Task::ready(()),
++        }
++    }
++}
++
++pub(crate) fn extract_katex_diagrams(
++    events: &[(Range<usize>, MarkdownEvent)],
++) -> BTreeMap<usize, ParsedMarkdownKatexDiagram> {
++    let mut katex_diagrams = BTreeMap::default();
++
++    for (source_range, event) in events {
++        match event {
++            MarkdownEvent::InlineMath(contents) => {
++                katex_diagrams.insert(
++                    source_range.start,
++                    ParsedMarkdownKatexDiagram {
++                        source_range: source_range.clone(),
++                        contents: contents.clone(),
++                        mode: KatexRenderMode::Inline,
++                    },
++                );
++            }
++            MarkdownEvent::DisplayMath(contents) => {
++                katex_diagrams.insert(
++                    source_range.start,
++                    ParsedMarkdownKatexDiagram {
++                        source_range: source_range.clone(),
++                        contents: contents.clone(),
++                        mode: KatexRenderMode::Display,
++                    },
++                );
++            }
++            _ => {}
++        }
++    }
++
++    katex_diagrams
++}
++
++pub(crate) fn render_display_katex_diagram(
++    katex_state: &KatexState,
++    contents: &ParsedMarkdownKatexDiagramContents,
++    source: &str,
++) -> AnyElement {
++    div()
++        .flex()
++        .w_full()
++        .items_center()
++        .justify_center()
++        .py_2()
++        .child(render_katex_content(katex_state, contents, source))
++        .into_any_element()
++}
++
++pub(crate) fn render_inline_katex_diagram(
++    katex_state: &KatexState,
++    contents: &ParsedMarkdownKatexDiagramContents,
++    source: &str,
++) -> AnyElement {
++    render_katex_content(katex_state, contents, source)
++}
++
++fn render_katex_content(
++    katex_state: &KatexState,
++    contents: &ParsedMarkdownKatexDiagramContents,
++    source: &str,
++) -> AnyElement {
++    let cached = katex_state.cache.get(contents);
++    let render_result = cached.and_then(|cached| cached.render_image.get());
++
++    match render_result {
++        Some(Ok(image)) => render_katex_image(image.clone(), Some(contents)),
++        Some(Err(_)) => render_katex_source_view(source),
++        None => cached
++            .and_then(|cached| cached.fallback_image.as_ref().cloned())
++            .map(|image| render_katex_image(image, Some(contents)))
++            .unwrap_or_else(|| render_katex_source_view(source)),
++    }
++}
++
++fn render_katex_image(
++    image: Arc<RenderImage>,
++    contents: Option<&ParsedMarkdownKatexDiagramContents>,
++) -> AnyElement {
++    let image = img(ImageSource::Render(image));
++    match contents.map(|contents| contents.mode) {
++        Some(KatexRenderMode::Inline) => image.flex_none().into_any_element(),
++        _ => image.max_w_full().into_any_element(),
++    }
++}
++
++fn render_katex_source_view(contents: &str) -> AnyElement {
++    StyledText::new(contents.to_string()).into_any()
++}
++
++pub(crate) fn cache_contents_for_rendered_formula(
++    formula: &ParsedMarkdownKatexDiagram,
++    font_size: f32,
++    color: Hsla,
++) -> ParsedMarkdownKatexDiagramContents {
++    let effective_font_size = match formula.mode {
++        KatexRenderMode::Inline => font_size * 0.83,
++        KatexRenderMode::Display => font_size,
++    };
++    cache_contents(formula, effective_font_size, color)
++}
++
++fn cache_contents(
++    formula: &ParsedMarkdownKatexDiagram,
++    font_size: f32,
++    color: Hsla,
++) -> ParsedMarkdownKatexDiagramContents {
++    ParsedMarkdownKatexDiagramContents {
++        contents: formula.contents.clone(),
++        mode: formula.mode,
++        font_size: (font_size * 100.0).round() as u32,
++        color: hsla_to_rgba_bytes(color),
++    }
++}
++
++fn math_style(mode: KatexRenderMode) -> MathStyle {
++    match mode {
++        KatexRenderMode::Inline => MathStyle::Text,
++        KatexRenderMode::Display => MathStyle::Display,
++    }
++}
++
++fn padding_for_mode(mode: KatexRenderMode) -> f32 {
++    match mode {
++        KatexRenderMode::Inline => 0.5,
++        KatexRenderMode::Display => 3.0,
++    }
++}
++
++fn hsla_to_rgba_bytes(color: Hsla) -> [u8; 4] {
++    let rgba: Rgba = color.to_rgb();
++    [
++        (rgba.r * 255.0).round() as u8,
++        (rgba.g * 255.0).round() as u8,
++        (rgba.b * 255.0).round() as u8,
++        (rgba.a * 255.0).round() as u8,
++    ]
++}
++
++fn rgba_bytes_to_ratex_color(color: [u8; 4]) -> Color {
++    Color::new(
++        color[0] as f32 / 255.0,
++        color[1] as f32 / 255.0,
++        color[2] as f32 / 255.0,
++        color[3] as f32 / 255.0,
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{
++        CachedKatexDiagram, KatexDiagramCache, KatexRenderMode, KatexState,
++        ParsedMarkdownKatexDiagram, ParsedMarkdownKatexDiagramContents, extract_katex_diagrams,
++    };
++    use collections::HashMap;
++    use gpui::{Context, IntoElement, Render, RenderImage, TestAppContext, Window};
++    use std::sync::Arc;
++    use ui::prelude::*;
++    use util::ResultExt;
++
++    use crate::{Markdown, MarkdownOptions, ParsedMarkdown};
++
++    fn with_katex_state(
++        source: &str,
++        cx: &mut TestAppContext,
++        f: impl FnOnce(&mut KatexState, &mut Context<Markdown>),
++    ) {
++        struct TestWindow;
++
++        impl Render for TestWindow {
++            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
++                div()
++            }
++        }
++
++        let (_, cx) = cx.add_window_view(|_, _| TestWindow);
++        let markdown = cx.new(|cx| {
++            Markdown::new_with_options(
++                source.into(),
++                None,
++                None,
++                MarkdownOptions {
++                    render_embedded_diagrams: true,
++                    ..Default::default()
++                },
++                cx,
++            )
++        });
++        cx.run_until_parked();
++        markdown.update(cx, |markdown, cx| {
++            f(&mut markdown.katex_state, cx);
++        });
++    }
++
++    fn parsed_markdown(source: &str) -> ParsedMarkdown {
++        let events = crate::parser::parse_markdown_with_options(source, false, false, false).events;
++        ParsedMarkdown {
++            source: source.into(),
++            katex_diagrams: extract_katex_diagrams(&events),
++            events: Arc::from(events),
++            ..Default::default()
++        }
++    }
++
++    fn mock_render_image(cx: &mut TestAppContext) -> Arc<RenderImage> {
++        cx.update(|cx| {
++            cx.svg_renderer()
++                .render_single_frame(
++                    br#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>"#,
++                    1.0,
++                )
++                .expect("test svg should render")
++        })
++    }
++
++    fn katex_diagram(
++        contents: &str,
++        mode: KatexRenderMode,
++        source_start: usize,
++    ) -> ParsedMarkdownKatexDiagram {
++        ParsedMarkdownKatexDiagram {
++            source_range: source_start..source_start,
++            contents: contents.into(),
++            mode,
++        }
++    }
++
++    fn katex_contents(
++        contents: &str,
++        mode: KatexRenderMode,
++        font_size: u32,
++    ) -> ParsedMarkdownKatexDiagramContents {
++        ParsedMarkdownKatexDiagramContents {
++            contents: contents.into(),
++            mode,
++            font_size,
++            color: [255, 255, 255, 255],
++        }
++    }
++
++    fn cache_with_contents(
++        contents: impl IntoIterator<Item = ParsedMarkdownKatexDiagramContents>,
++    ) -> KatexDiagramCache {
++        let mut cache = HashMap::default();
++        for contents in contents {
++            cache.insert(
++                contents,
++                Arc::new(CachedKatexDiagram::new_for_test(None, None)),
++            );
++        }
++        cache
++    }
++
++    fn retain_cache(
++        cache: &mut KatexDiagramCache,
++        active_diagrams: impl IntoIterator<Item = ParsedMarkdownKatexDiagram>,
++    ) {
++        let active_diagrams = active_diagrams.into_iter().collect::<Vec<_>>();
++        let active_occurrences = active_diagrams
++            .iter()
++            .map(|diagram| super::KatexOccurrenceState {
++                source_start: diagram.source_range.start,
++                contents: diagram.contents.clone(),
++                mode: diagram.mode,
++                rendered_key: None,
++            })
++            .collect::<Vec<_>>();
++        KatexState::retain_active_formula_cache_entries(cache, &active_occurrences, false);
++    }
++
++    fn seed_rendered_cache(
++        katex_state: &mut KatexState,
++        source_start: usize,
++        contents: ParsedMarkdownKatexDiagramContents,
++        image: Arc<RenderImage>,
++    ) {
++        katex_state.cache.insert(
++            contents.clone(),
++            Arc::new(CachedKatexDiagram::new_for_test(Some(image), None)),
++        );
++        let occurrence = katex_state
++            .occurrence_for_source_start_mut(source_start)
++            .expect("occurrence should exist");
++        occurrence.rendered_key = Some(contents);
++    }
++
++    #[test]
++    fn test_extract_katex_diagrams() {
++        let markdown = "Inline $x^2$\n\n$$y$$";
++        let events =
++            crate::parser::parse_markdown_with_options(markdown, false, false, false).events;
++        let diagrams = extract_katex_diagrams(&events);
++
++        assert_eq!(diagrams.len(), 2);
++        let inline = diagrams.values().next().unwrap();
++        assert_eq!(inline.contents, "x^2");
++        assert_eq!(&markdown[inline.source_range.clone()], "$x^2$");
++        assert_eq!(inline.mode, KatexRenderMode::Inline);
++
++        let display = diagrams
++            .values()
++            .find(|diagram| diagram.mode == KatexRenderMode::Display)
++            .unwrap();
++        assert_eq!(display.contents, "y");
++        assert_eq!(&markdown[display.source_range.clone()], "$$y$$");
++    }
++
++    #[gpui::test]
++    fn test_math_with_setext_lines_renders_to_svg(cx: &mut TestAppContext) {
++        for contents in [
++            r"
++\begin{bmatrix}1 & 2 \\ 3 & 4\end{bmatrix}
++\begin{bmatrix}x \\ y\end{bmatrix}
++=
++\begin{bmatrix}5 \\ 11\end{bmatrix}
++",
++            r"
++\mathcal{F}\{f(t)\}(\omega)
++=
++\int_{-\infty}^{\infty}
++f(t)e^{-i\omega t}\,dt
++",
++        ] {
++            let parsed = parsed_markdown(&format!("$${contents}$$"));
++            assert_eq!(parsed.katex_diagrams.len(), 1);
++            let formula = parsed.katex_diagrams.values().next().expect("display math");
++            assert_eq!(formula.contents, contents);
++            let ast = super::parse(&formula.contents).expect("valid formula reaches RaTeX");
++            let layout = super::layout(&ast, &super::LayoutOptions::default());
++            let display_list = super::to_display_list(&layout);
++            let svg = super::render_to_svg(
++                &display_list,
++                &super::SvgOptions {
++                    embed_glyphs: true,
++                    ..Default::default()
++                },
++            );
++            cx.update(|cx| {
++                cx.svg_renderer()
++                    .render_single_frame(svg.as_bytes(), 1.0)
++                    .expect("formula SVG decodes through the native renderer");
++            });
++        }
++    }
++
++    #[gpui::test]
++    fn test_katex_fallback_on_edit(cx: &mut TestAppContext) {
++        let old_y_start = "$x$ ".len();
++        let new_y_start = old_y_start;
++        let old_y = katex_contents("y", KatexRenderMode::Inline, 1400);
++        let new_y = katex_contents("y^2", KatexRenderMode::Inline, 1400);
++        let image_y = mock_render_image(cx);
++        let parsed = parsed_markdown("$x$ $y^2$ $z$");
++
++        with_katex_state("$x$ $y$ $z$", cx, |katex_state, cx| {
++            seed_rendered_cache(katex_state, old_y_start, old_y, image_y.clone());
++            katex_state.update(&parsed, cx);
++            katex_state.ensure_cached_contents(new_y_start, &new_y, cx);
++
++            assert_eq!(
++                katex_state
++                    .cache
++                    .get(&new_y)
++                    .and_then(|cached| cached.fallback_image.as_ref())
++                    .map(|image| image.id),
++                Some(image_y.id)
++            );
++        });
++    }
++
++    #[gpui::test]
++    fn test_katex_no_fallback_on_add_in_middle(cx: &mut TestAppContext) {
++        let y_start = "$x$ ".len();
++        let old_z_start = "$x$ ".len();
++        let old_z = katex_contents("z", KatexRenderMode::Inline, 1400);
++        let new_y = katex_contents("y", KatexRenderMode::Inline, 1400);
++        let parsed = parsed_markdown("$x$ $y$ $z$");
++
++        let image = mock_render_image(cx);
++        with_katex_state("$x$ $z$", cx, |katex_state, cx| {
++            seed_rendered_cache(katex_state, old_z_start, old_z, image);
++            katex_state.update(&parsed, cx);
++            katex_state.ensure_cached_contents(y_start, &new_y, cx);
++
++            assert_eq!(
++                katex_state
++                    .cache
++                    .get(&new_y)
++                    .and_then(|cached| cached.fallback_image.as_ref())
++                    .map(|image| image.id),
++                None
++            );
++        });
++    }
++
++    #[gpui::test]
++    fn test_katex_fallback_chains_on_rapid_edits(cx: &mut TestAppContext) {
++        let y_start = "$x$ ".len();
++        let old_y = katex_contents("y^2", KatexRenderMode::Inline, 1400);
++        let new_y = katex_contents("y^3", KatexRenderMode::Inline, 1400);
++        let original = mock_render_image(cx);
++        let parsed = parsed_markdown("$x$ $y^3$ $z$");
++
++        with_katex_state("$x$ $y^2$ $z$", cx, |katex_state, cx| {
++            seed_rendered_cache(katex_state, y_start, old_y, original.clone());
++            katex_state.update(&parsed, cx);
++            katex_state.ensure_cached_contents(y_start, &new_y, cx);
++
++            assert_eq!(
++                katex_state
++                    .cache
++                    .get(&new_y)
++                    .and_then(|cached| cached.fallback_image.as_ref())
++                    .map(|image| image.id),
++                Some(original.id)
++            );
++        });
++    }
++
++    #[gpui::test]
++    fn test_katex_update_does_not_create_cache_entries(cx: &mut TestAppContext) {
++        with_katex_state("$x$", cx, |katex_state, _| {
++            assert!(
++                katex_state.cache.is_empty(),
++                "parse/update should track occurrences but must not create render cache entries"
++            );
++        });
++    }
++
++    #[test]
++    fn test_katex_cache_retain_preserves_active_formula_render_variants() {
++        let heading_x = katex_contents("x", KatexRenderMode::Inline, 3000);
++        let heading_y = katex_contents("y", KatexRenderMode::Inline, 3000);
++        let body_x = katex_contents("x", KatexRenderMode::Inline, 1400);
++        let mut cache = cache_with_contents([heading_x.clone(), heading_y.clone(), body_x.clone()]);
++
++        retain_cache(
++            &mut cache,
++            [
++                katex_diagram("x", KatexRenderMode::Inline, 0),
++                katex_diagram("y", KatexRenderMode::Inline, 4),
++            ],
++        );
++
++        assert!(cache.contains_key(&heading_x));
++        assert!(cache.contains_key(&heading_y));
++        assert!(cache.contains_key(&body_x));
++    }
++
++    #[test]
++    fn test_katex_cache_retain_removes_edited_formula_variants() {
++        let old_heading_x = katex_contents("x", KatexRenderMode::Inline, 3000);
++        let old_body_x = katex_contents("x", KatexRenderMode::Inline, 1400);
++        let unchanged_heading_y = katex_contents("y", KatexRenderMode::Inline, 3000);
++        let mut cache = cache_with_contents([
++            old_heading_x.clone(),
++            old_body_x.clone(),
++            unchanged_heading_y.clone(),
++        ]);
++
++        retain_cache(
++            &mut cache,
++            [
++                katex_diagram("x^2", KatexRenderMode::Inline, 0),
++                katex_diagram("y", KatexRenderMode::Inline, 6),
++            ],
++        );
++
++        assert!(!cache.contains_key(&old_heading_x));
++        assert!(!cache.contains_key(&old_body_x));
++        assert!(cache.contains_key(&unchanged_heading_y));
++    }
++
++    #[test]
++    fn test_katex_cache_retain_removes_stale_formula_variants() {
++        let active_x = katex_contents("x", KatexRenderMode::Inline, 1400);
++        let stale_heading_z = katex_contents("z", KatexRenderMode::Inline, 3000);
++        let stale_body_z = katex_contents("z", KatexRenderMode::Inline, 1400);
++        let mut cache = cache_with_contents([
++            active_x.clone(),
++            stale_heading_z.clone(),
++            stale_body_z.clone(),
++        ]);
++
++        retain_cache(&mut cache, [katex_diagram("x", KatexRenderMode::Inline, 0)]);
++
++        assert!(cache.contains_key(&active_x));
++        assert!(!cache.contains_key(&stale_heading_z));
++        assert!(!cache.contains_key(&stale_body_z));
++    }
++}
+diff --git a/crates/markdown/src/markdown.rs b/crates/markdown/src/markdown.rs
+index 5a28ca7988a4c9224eedfa8f387f3a342b0d34a4..8ee436134f1864938b3f4d33d2387da301df912e 100644
+--- a/crates/markdown/src/markdown.rs
++++ b/crates/markdown/src/markdown.rs
+@@ -1,4 +1,5 @@
+ pub mod html;
++mod katex;
+ mod mermaid;
+ pub mod parser;
+ mod path_range;
+@@ -10,6 +11,10 @@ use gpui::HitboxBehavior;
+ use gpui::UnderlineStyle;
+ use language::LanguageName;
+ 
++use crate::katex::{
++    KatexRenderMode, KatexState, ParsedMarkdownKatexDiagram, cache_contents_for_rendered_formula,
++    extract_katex_diagrams, render_display_katex_diagram, render_inline_katex_diagram,
++};
+ use log::Level;
+ use mermaid::{
+     MermaidState, ParsedMarkdownMermaidDiagram, extract_mermaid_diagrams, render_mermaid_diagram,
+@@ -509,6 +514,7 @@ pub struct Markdown {
+     /// contents. All entries are retained against the parsed diagrams on each
+     /// reparse, so a single map keeps that bookkeeping in one place.
+     mermaid_views: HashMap<usize, MermaidViewState>,
++    katex_state: KatexState,
+     copied_code_blocks: HashSet<ElementId>,
+     wrapped_code_blocks: HashSet<usize>,
+     code_block_scroll_handles: BTreeMap<usize, ScrollHandle>,
+@@ -523,7 +529,7 @@ pub struct Markdown {
+ pub struct MarkdownOptions {
+     pub parse_links_only: bool,
+     pub parse_html: bool,
+-    pub render_mermaid_diagrams: bool,
++    pub render_embedded_diagrams: bool,
+     pub parse_heading_slugs: bool,
+     pub render_metadata_blocks: bool,
+ }
+@@ -675,10 +681,10 @@ impl Markdown {
+     ) -> Self {
+         let focus_handle = cx.focus_handle();
+ 
+-        let theme_subscription = if options.render_mermaid_diagrams {
++        let theme_subscription = if options.render_embedded_diagrams {
+             Some(
+                 cx.observe_global::<theme::GlobalTheme>(|this: &mut Self, cx| {
+-                    this.invalidate_mermaid_cache(cx);
++                    this.invalidate_embedded_diagrams_caches(cx);
+                 }),
+             )
+         } else {
+@@ -704,6 +710,7 @@ impl Markdown {
+             mermaid_state: MermaidState::default(),
+             _mermaid_theme_subscription: theme_subscription,
+             mermaid_views: HashMap::default(),
++            katex_state: KatexState::default(),
+             copied_code_blocks: HashSet::default(),
+             wrapped_code_blocks: HashSet::default(),
+             code_block_scroll_handles: BTreeMap::default(),
+@@ -754,16 +761,17 @@ impl Markdown {
+             .retain(|id, _| ids.contains(id));
+     }
+ 
+-    pub fn invalidate_mermaid_cache(&mut self, cx: &mut Context<Self>) {
+-        if !self.options.render_mermaid_diagrams || self.parsed_markdown.mermaid_diagrams.is_empty()
+-        {
++    pub fn invalidate_embedded_diagrams_caches(&mut self, cx: &mut Context<Self>) {
++        if !self.options.render_embedded_diagrams {
+             return;
+         }
+-
++        self.katex_state.clear();
++        self.katex_state.update(&self.parsed_markdown, cx);
+         self.mermaid_state.clear(cx);
++        let parsed_markdown = self.parsed_markdown.clone();
+         let mermaid_views = &self.mermaid_views;
+         self.mermaid_state.update(
+-            &self.parsed_markdown,
++            &parsed_markdown,
+             |source_offset| {
+                 mermaid_views
+                     .get(&source_offset)
+@@ -1231,7 +1239,7 @@ impl Markdown {
+         let source = self.source.clone();
+         let should_parse_links_only = self.options.parse_links_only;
+         let should_parse_html = self.options.parse_html;
+-        let should_render_mermaid_diagrams = self.options.render_mermaid_diagrams;
++        let should_render_embedded_diagrams = self.options.render_embedded_diagrams;
+         let should_parse_heading_slugs = self.options.parse_heading_slugs;
+         let should_parse_metadata_blocks = self.options.render_metadata_blocks;
+         let language_registry = self.language_registry.clone();
+@@ -1249,6 +1257,7 @@ impl Markdown {
+                         html_blocks: BTreeMap::default(),
+                         metadata_blocks: BTreeMap::default(),
+                         mermaid_diagrams: BTreeMap::default(),
++                        katex_diagrams: BTreeMap::default(),
+                         heading_slugs: HashMap::default(),
+                         footnote_definitions: HashMap::default(),
+                         link_definition_spans: Arc::default(),
+@@ -1275,10 +1284,13 @@ impl Markdown {
+             let footnote_definitions = parsed.footnote_definitions;
+             let link_definition_spans = parsed.link_definition_spans;
+             let has_untagged_code_block = parsed.has_untagged_code_block;
+-            let mermaid_diagrams = if should_render_mermaid_diagrams {
+-                extract_mermaid_diagrams(&source, &events)
++            let (mermaid_diagrams, katex_diagrams) = if should_render_embedded_diagrams {
++                (
++                    extract_mermaid_diagrams(&source, &events),
++                    extract_katex_diagrams(&events),
++                )
+             } else {
+-                BTreeMap::default()
++                (BTreeMap::default(), BTreeMap::default())
+             };
+             let mut images_by_source_offset = HashMap::default();
+             let mut languages_by_name = TreeMap::default();
+@@ -1346,6 +1358,7 @@ impl Markdown {
+                 html_blocks,
+                 metadata_blocks,
+                 mermaid_diagrams,
++                katex_diagrams,
+                 heading_slugs,
+                 footnote_definitions,
+                 link_definition_spans: Arc::from(link_definition_spans),
+@@ -1367,7 +1380,7 @@ impl Markdown {
+                 }) {
+                     this.active_root_block = None;
+                 }
+-                if this.options.render_mermaid_diagrams {
++                if this.options.render_embedded_diagrams {
+                     let parsed_markdown = this.parsed_markdown.clone();
+                     this.mermaid_views
+                         .retain(|offset, _| parsed_markdown.mermaid_diagrams.contains_key(offset));
+@@ -1381,9 +1394,11 @@ impl Markdown {
+                         },
+                         cx,
+                     );
++                    this.katex_state.update(&parsed_markdown, cx);
+                 } else {
+                     this.mermaid_state.clear(cx);
+                     this.mermaid_views.clear();
++                    this.katex_state.clear();
+                 }
+                 this.pending_parse.take();
+                 if this.should_reparse {
+@@ -1495,6 +1510,7 @@ pub struct ParsedMarkdown {
+     pub(crate) html_blocks: BTreeMap<usize, html::html_parser::ParsedHtmlBlock>,
+     pub(crate) metadata_blocks: BTreeMap<usize, ParsedMetadataBlock>,
+     pub(crate) mermaid_diagrams: BTreeMap<usize, ParsedMarkdownMermaidDiagram>,
++    pub(crate) katex_diagrams: BTreeMap<usize, ParsedMarkdownKatexDiagram>,
+     pub heading_slugs: HashMap<SharedString, usize>,
+     pub footnote_definitions: HashMap<SharedString, usize>,
+     pub(crate) link_definition_spans: Arc<[Range<usize>]>,
+@@ -2053,6 +2069,7 @@ impl MarkdownElement {
+             self.style.heading_level_styles.as_ref(),
+             self.style.heading_border_color,
+         );
++        let level_text_style = heading_text_style(level, self.style.heading_level_styles.as_ref());
+ 
+         heading = match align {
+             TextAlign::Center => heading.text_center(),
+@@ -2062,7 +2079,9 @@ impl MarkdownElement {
+ 
+         let mut heading_style = self.style.heading.clone();
+         let mut heading_text_style = heading_style.text_style().clone();
++        heading_text_style.refine(&level_text_style);
+         heading.style().refine(&heading_style);
++        heading.style().text = level_text_style;
+ 
+         if let Some(level_style) =
+             heading_level_style(level, self.style.heading_level_styles.as_ref())
+@@ -2615,14 +2634,22 @@ impl Element for MarkdownElement {
+             }
+         };
+ 
+-        let (parsed_markdown, images, active_root_block, render_mermaid_diagrams, mermaid_state) = {
++        let (
++            parsed_markdown,
++            images,
++            active_root_block,
++            render_embedded_diagrams,
++            mermaid_state,
++            katex_state,
++        ) = {
+             let markdown = self.markdown.read(cx);
+             (
+                 markdown.parsed_markdown.clone(),
+                 markdown.images_by_source_offset.clone(),
+                 markdown.active_root_block,
+-                markdown.options.render_mermaid_diagrams,
++                markdown.options.render_embedded_diagrams,
+                 markdown.mermaid_state.clone(),
++                markdown.katex_state.clone(),
+             )
+         };
+         let mut builder = MarkdownElementBuilder::new(
+@@ -2758,7 +2785,7 @@ impl Element for MarkdownElement {
+                             );
+                         }
+                         MarkdownTag::CodeBlock { kind, .. } => {
+-                            if render_mermaid_diagrams
++                            if render_embedded_diagrams
+                                 && let Some(mermaid_diagram) =
+                                     parsed_markdown.mermaid_diagrams.get(&range.start)
+                             {
+@@ -3358,6 +3385,48 @@ impl Element for MarkdownElement {
+                     builder.push_text(&format!("[{label}]"), range.clone());
+                     builder.pop_text_style();
+                 }
++                MarkdownEvent::InlineMath(_) | MarkdownEvent::DisplayMath(_) => {
++                    if render_embedded_diagrams
++                        && let Some(katex_diagram) =
++                            parsed_markdown.katex_diagrams.get(&range.start)
++                    {
++                        let contents = cache_contents_for_rendered_formula(
++                            katex_diagram,
++                            f32::from(builder.text_style().font_size.to_pixels(window.rem_size())),
++                            builder.text_style().color,
++                        );
++                        let source_range = katex_diagram.source_range.clone();
++                        let source = &parsed_markdown.source[source_range.clone()];
++                        if katex_state.should_show_source_text_for_contents(&contents) {
++                            self.markdown.update(cx, |markdown, cx| {
++                                markdown.katex_state.ensure_cached_contents(
++                                    katex_diagram.source_range.start,
++                                    &contents,
++                                    cx,
++                                );
++                            });
++                            match katex_diagram.mode {
++                                KatexRenderMode::Inline => builder.push_text(source, source_range),
++                                KatexRenderMode::Display => {
++                                    builder.push_block_text(source, source_range)
++                                }
++                            }
++                        } else {
++                            match katex_diagram.mode {
++                                KatexRenderMode::Inline => builder.push_inline_sourced_element(
++                                    source_range,
++                                    render_inline_katex_diagram(&katex_state, &contents, source),
++                                ),
++                                KatexRenderMode::Display => builder.push_block_sourced_element(
++                                    source_range,
++                                    render_display_katex_diagram(&katex_state, &contents, source),
++                                ),
++                            }
++                        }
++                    } else {
++                        builder.push_text(&parsed_markdown.source[range.clone()], range.clone());
++                    }
++                }
+             }
+         }
+         if self.style.code_block_overflow_x_scroll {
+@@ -3550,6 +3619,55 @@ fn heading_level_style(
+     }
+ }
+ 
++fn heading_text_style(
++    level: pulldown_cmark::HeadingLevel,
++    custom_styles: Option<&HeadingLevelStyles>,
++) -> TextStyleRefinement {
++    let mut text_style = match level {
++        pulldown_cmark::HeadingLevel::H1 => TextStyleRefinement {
++            font_size: Some(rems(1.875).into()),
++            ..Default::default()
++        },
++        pulldown_cmark::HeadingLevel::H2 => TextStyleRefinement {
++            font_size: Some(rems(1.5).into()),
++            ..Default::default()
++        },
++        pulldown_cmark::HeadingLevel::H3 => TextStyleRefinement {
++            font_size: Some(rems(1.25).into()),
++            ..Default::default()
++        },
++        pulldown_cmark::HeadingLevel::H4 => TextStyleRefinement {
++            font_size: Some(rems(1.125).into()),
++            ..Default::default()
++        },
++        pulldown_cmark::HeadingLevel::H5 => TextStyleRefinement {
++            font_size: Some(rems(1.0).into()),
++            ..Default::default()
++        },
++        pulldown_cmark::HeadingLevel::H6 => TextStyleRefinement {
++            font_size: Some(rems(0.875).into()),
++            ..Default::default()
++        },
++    };
++
++    if let Some(styles) = custom_styles {
++        let style_opt = match level {
++            pulldown_cmark::HeadingLevel::H1 => &styles.h1,
++            pulldown_cmark::HeadingLevel::H2 => &styles.h2,
++            pulldown_cmark::HeadingLevel::H3 => &styles.h3,
++            pulldown_cmark::HeadingLevel::H4 => &styles.h4,
++            pulldown_cmark::HeadingLevel::H5 => &styles.h5,
++            pulldown_cmark::HeadingLevel::H6 => &styles.h6,
++        };
++
++        if let Some(style) = style_opt {
++            text_style.refine(style);
++        }
++    }
++
++    text_style
++}
++
+ fn render_wrap_code_block_button(
+     id: usize,
+     is_wrapped: bool,
+@@ -4094,6 +4212,52 @@ impl MarkdownElementBuilder {
+         );
+     }
+ 
++    fn push_block_sourced_element(
++        &mut self,
++        source_range: Range<usize>,
++        element: impl Into<AnyElement>,
++    ) {
++        self.flush_text();
++        let anchor = self.render_source_anchor(source_range);
++        self.append_child(
++            div()
++                .relative()
++                .w_full()
++                .flex_none()
++                .child(anchor)
++                .child(element.into())
++                .into_any_element(),
++        );
++    }
++
++    fn push_inline_sourced_element(
++        &mut self,
++        source_range: Range<usize>,
++        element: impl Into<AnyElement>,
++    ) {
++        self.modify_current_div(|div| div.flex().flex_wrap().items_center());
++        if let Some(entry) = self.div_stack.last_mut() {
++            entry.line_break_mode = LineBreakMode::FlexWrap;
++        }
++        let anchor = self.render_source_anchor_with_text_style(source_range, self.text_style());
++        self.append_child(
++            div()
++                .relative()
++                .flex_none()
++                .child(anchor)
++                .child(element.into())
++                .into_any_element(),
++        );
++    }
++
++    fn push_block_text(&mut self, text: &str, source_range: Range<usize>) {
++        self.flush_text();
++        self.div_stack
++            .push(DivStackEntry::new(div().w_full().flex_none()));
++        self.push_text(text, source_range);
++        self.pop_div();
++    }
++
+     fn push_list(&mut self, bullet_index: Option<u64>) {
+         self.list_stack.push(ListStackEntry { bullet_index });
+     }
+@@ -4271,7 +4435,14 @@ impl MarkdownElementBuilder {
+     }
+ 
+     fn render_source_anchor(&mut self, source_range: Range<usize>) -> AnyElement {
+-        let mut text_style = self.base_text_style.clone();
++        self.render_source_anchor_with_text_style(source_range, self.base_text_style.clone())
++    }
++
++    fn render_source_anchor_with_text_style(
++        &mut self,
++        source_range: Range<usize>,
++        mut text_style: TextStyle,
++    ) -> AnyElement {
+         text_style.color = Hsla::transparent_black();
+         let text = "\u{200B}";
+         let styled_text = StyledText::new(text).with_runs(vec![text_style.to_run(text.len())]);
+@@ -5799,7 +5970,7 @@ mod tests {
+                 Some(language_registry),
+                 None,
+                 MarkdownOptions {
+-                    render_mermaid_diagrams: true,
++                    render_embedded_diagrams: true,
+                     ..MarkdownOptions::default()
+                 },
+                 cx,
+@@ -9373,4 +9544,213 @@ mod tests {
+         (321, "- a\n  > b\n  ```\n  c\n  ```\n- d\n", &["c\n"]),
+         (324, "1. ```\n   foo\n   ```\n\n   bar\n", &["foo\n"]),
+     ];
++    fn draw_markdown(markdown: Entity<Markdown>, cx: &mut VisualTestContext) -> RenderedText {
++        let (rendered, _) = cx.draw(
++            Default::default(),
++            size(px(600.0), px(600.0)),
++            |_window, _cx| {
++                MarkdownElement::new(markdown, MarkdownStyle::default()).code_block_renderer(
++                    CodeBlockRenderer::Default {
++                        copy_button_visibility: CopyButtonVisibility::Hidden,
++                        wrap_button_visibility: WrapButtonVisibility::Hidden,
++                        border: false,
++                    },
++                )
++            },
++        );
++        rendered.text
++    }
++
++    #[gpui::test]
++    fn test_display_katex_fallback_is_rendered_on_its_own_line(cx: &mut TestAppContext) {
++        let source = "text 1 $$x$$ text 2";
++        let rendered = render_markdown_with_options(
++            source,
++            None,
++            MarkdownOptions {
++                render_embedded_diagrams: true,
++                ..Default::default()
++            },
++            cx,
++        );
++
++        assert_eq!(
++            rendered.text_for_range(0..source.len()),
++            "text 1 \n$$x$$\n text 2"
++        );
++    }
++
++    #[gpui::test]
++    fn test_multiple_display_katex_fallbacks_are_rendered_on_their_own_lines(
++        cx: &mut TestAppContext,
++    ) {
++        let source = "text 1 $$x$$ text 2 $$y$$ text 3";
++        let rendered = render_markdown_with_options(
++            source,
++            None,
++            MarkdownOptions {
++                render_embedded_diagrams: true,
++                ..Default::default()
++            },
++            cx,
++        );
++
++        assert_eq!(
++            rendered.text_for_range(0..source.len()),
++            "text 1 \n$$x$$\n text 2 \n$$y$$\n text 3"
++        );
++    }
++
++    #[gpui::test]
++    fn test_inline_katex_fallback_stays_inline(cx: &mut TestAppContext) {
++        let source = "text $x$ text";
++        let rendered = render_markdown_with_options(
++            source,
++            None,
++            MarkdownOptions {
++                render_embedded_diagrams: true,
++                ..Default::default()
++            },
++            cx,
++        );
++
++        assert_eq!(rendered.text_for_range(0..source.len()), "text $x$ text");
++    }
++
++    #[gpui::test]
++    fn test_heading_inline_katex_cache_survives_unrelated_formula_edit(cx: &mut TestAppContext) {
++        struct TestWindow;
++
++        impl Render for TestWindow {
++            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
++                div()
++            }
++        }
++
++        ensure_theme_initialized(cx);
++
++        let (_, cx) = cx.add_window_view(|_, _| TestWindow);
++        let markdown = cx.new(|cx| {
++            Markdown::new_with_options(
++                "# Heading $x$\n\nBody $y$".into(),
++                None,
++                None,
++                MarkdownOptions {
++                    render_embedded_diagrams: true,
++                    ..Default::default()
++                },
++                cx,
++            )
++        });
++        cx.run_until_parked();
++        let _ = draw_markdown(markdown.clone(), cx);
++
++        let (heading_x_contents, body_y_font_size) = markdown.read_with(cx, |markdown, _| {
++            let cached_contents = markdown
++                .katex_state
++                .cache
++                .keys()
++                .cloned()
++                .collect::<Vec<_>>();
++            let body_y_font_size = cached_contents
++                .iter()
++                .find(|contents| {
++                    contents.contents.as_ref() == "y"
++                        && contents.mode == crate::katex::KatexRenderMode::Inline
++                })
++                .map(|contents| contents.font_size)
++                .expect("body inline katex should cache a body-size entry");
++            let heading_x_contents = cached_contents
++                .iter()
++                .filter(|contents| {
++                    contents.contents.as_ref() == "x"
++                        && contents.mode == crate::katex::KatexRenderMode::Inline
++                })
++                .max_by_key(|contents| contents.font_size)
++                .cloned()
++                .expect("heading inline katex should cache a heading-size entry");
++
++            (heading_x_contents, body_y_font_size)
++        });
++
++        assert!(
++            !markdown.read_with(cx, |markdown, _| markdown.katex_state.cache.contains_key(
++                &crate::katex::ParsedMarkdownKatexDiagramContents {
++                    contents: "x".into(),
++                    mode: crate::katex::KatexRenderMode::Inline,
++                    font_size: body_y_font_size,
++                    color: heading_x_contents.color,
++                }
++            )),
++            "heading-only katex should not create a redundant body-size cache entry"
++        );
++
++        markdown.update(cx, |markdown, cx| {
++            markdown.replace("# Heading $x$\n\nBody $y^2$", cx);
++        });
++        cx.run_until_parked();
++
++        assert!(
++            markdown.read_with(cx, |markdown, _| markdown
++                .katex_state
++                .cache
++                .contains_key(&heading_x_contents)),
++            "unrelated formula edits should not evict unchanged heading inline katex cache entries"
++        );
++    }
++
++    #[gpui::test]
++    fn test_heading_inline_katex_uses_heading_font_size(cx: &mut TestAppContext) {
++        struct TestWindow;
++
++        impl Render for TestWindow {
++            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
++                div()
++            }
++        }
++
++        ensure_theme_initialized(cx);
++
++        let (_, cx) = cx.add_window_view(|_, _| TestWindow);
++        let markdown = cx.new(|cx| {
++            Markdown::new_with_options(
++                "# Heading $x$\n\nBody $x$".into(),
++                None,
++                None,
++                MarkdownOptions {
++                    render_embedded_diagrams: true,
++                    ..Default::default()
++                },
++                cx,
++            )
++        });
++        cx.run_until_parked();
++        let _ = draw_markdown(markdown.clone(), cx);
++
++        let mut x_font_sizes = markdown.read_with(cx, |markdown, _| {
++            markdown
++                .katex_state
++                .cache
++                .keys()
++                .cloned()
++                .into_iter()
++                .filter(|contents| {
++                    contents.contents.as_ref() == "x"
++                        && contents.mode == crate::katex::KatexRenderMode::Inline
++                })
++                .map(|contents| contents.font_size)
++                .collect::<Vec<_>>()
++        });
++        x_font_sizes.sort_unstable();
++        x_font_sizes.dedup();
++
++        assert!(
++            x_font_sizes.len() == 2,
++            "expected exactly separate body and heading inline katex cache entries, got {x_font_sizes:?}"
++        );
++        assert!(
++            x_font_sizes.last() > x_font_sizes.first(),
++            "heading inline katex should use a larger font size than body inline katex, got {x_font_sizes:?}"
++        );
++    }
+ }
+diff --git a/crates/markdown/src/mermaid.rs b/crates/markdown/src/mermaid.rs
+index 63aae2aacbbafa3589893acbfb9f00cf22307d45..f97f24386e018c97bc60d30522c91319a8c58c4b 100644
+--- a/crates/markdown/src/mermaid.rs
++++ b/crates/markdown/src/mermaid.rs
+@@ -1648,7 +1648,7 @@ mod tests {
+                 None,
+                 None,
+                 MarkdownOptions {
+-                    render_mermaid_diagrams: true,
++                    render_embedded_diagrams: true,
+                     ..Default::default()
+                 },
+                 cx,
+@@ -1700,7 +1700,7 @@ mod tests {
+                 None,
+                 None,
+                 MarkdownOptions {
+-                    render_mermaid_diagrams: true,
++                    render_embedded_diagrams: true,
+                     ..Default::default()
+                 },
+                 cx,
+@@ -1748,7 +1748,7 @@ mod tests {
+         let rendered = render_markdown_with_options(
+             "```mermaid\ngraph TD;\n```",
+             MarkdownOptions {
+-                render_mermaid_diagrams: true,
++                render_embedded_diagrams: true,
+                 ..Default::default()
+             },
+             cx,
+@@ -1783,7 +1783,7 @@ mod tests {
+                 None,
+                 None,
+                 MarkdownOptions {
+-                    render_mermaid_diagrams: true,
++                    render_embedded_diagrams: true,
+                     ..Default::default()
+                 },
+                 cx,
+diff --git a/crates/markdown/src/parser.rs b/crates/markdown/src/parser.rs
+index 8ac2ea9df4aa74c9a540e783e68a89386e1248cb..67ce0bac93a0d44d59cc19d5097df55d609709b3 100644
+--- a/crates/markdown/src/parser.rs
++++ b/crates/markdown/src/parser.rs
+@@ -5,7 +5,7 @@ pub use pulldown_cmark::TagEnd as MarkdownTagEnd;
+ use pulldown_cmark::{
+     Alignment, CowStr, HeadingLevel, LinkType, MetadataBlockKind, Options, Parser,
+ };
+-use std::{ops::Range, sync::Arc};
++use std::{borrow::Cow, ops::Range, sync::Arc};
+ use util::markdown::generate_heading_slug;
+ 
+ use crate::{html, path_range::PathWithRange};
+@@ -20,7 +20,8 @@ pub const PARSE_OPTIONS: Options = Options::ENABLE_TABLES
+     .union(Options::ENABLE_OLD_FOOTNOTES)
+     .union(Options::ENABLE_GFM)
+     .union(Options::ENABLE_SUPERSCRIPT)
+-    .union(Options::ENABLE_SUBSCRIPT);
++    .union(Options::ENABLE_SUBSCRIPT)
++    .union(Options::ENABLE_MATH);
+ 
+ #[derive(Default)]
+ struct ParseState {
+@@ -273,6 +274,177 @@ fn yaml_frontmatter_candidate(text: &str) -> Option<&str> {
+     None
+ }
+ 
++fn math_delimiter_source(text: &str) -> Cow<'_, str> {
++    if !text.contains(r"\(") && !text.contains(r"\[") && !text.contains("$$") {
++        return Cow::Borrowed(text);
++    }
++
++    let mut protected = Parser::new_ext(text, PARSE_OPTIONS)
++        .into_offset_iter()
++        .filter_map(|(event, range)| match event {
++            pulldown_cmark::Event::Code(_)
++            | pulldown_cmark::Event::InlineMath(_)
++            | pulldown_cmark::Event::DisplayMath(_)
++            | pulldown_cmark::Event::Html(_)
++            | pulldown_cmark::Event::InlineHtml(_)
++            | pulldown_cmark::Event::Start(
++                pulldown_cmark::Tag::CodeBlock(_)
++                | pulldown_cmark::Tag::HtmlBlock
++                | pulldown_cmark::Tag::MetadataBlock(_)
++                | pulldown_cmark::Tag::Link { .. },
++            ) => Some(range),
++            _ => None,
++        })
++        .collect::<Vec<_>>();
++    protected.sort_by_key(|range| range.start);
++
++    let bytes = text.as_bytes();
++    let mut normalized: Option<Vec<u8>> = None;
++    let mut index = 0;
++    let mut protected_index = 0;
++    while index + 1 < bytes.len() {
++        while protected
++            .get(protected_index)
++            .is_some_and(|range| range.end <= index)
++        {
++            protected_index += 1;
++        }
++        if let Some(range) = protected.get(protected_index)
++            && range.contains(&index)
++        {
++            index = range.end;
++            continue;
++        }
++        if bytes[index] != b'\\' {
++            index += 1;
++            continue;
++        }
++        let closing = match bytes[index + 1] {
++            b'(' => b')',
++            b'[' => b']',
++            _ => {
++                index += 2;
++                continue;
++            }
++        };
++        let mut end = index + 2;
++        let mut found = false;
++        while end + 1 < bytes.len() {
++            if bytes[end] == b'\\' {
++                if bytes[end + 1] == closing {
++                    // Equal-length substitutions preserve selection, copy, and link offsets.
++                    let output = normalized.get_or_insert_with(|| bytes.to_vec());
++                    output[index..index + 2].copy_from_slice(b"$$");
++                    output[end..end + 2].copy_from_slice(b"$$");
++                    index = end + 2;
++                    found = true;
++                    break;
++                }
++                end += 2;
++            } else {
++                end += 1;
++            }
++        }
++        if !found {
++            index += 2;
++        }
++    }
++    let mut index = 0;
++    let mut protected_index = 0;
++    while index + 1 < bytes.len() {
++        while protected
++            .get(protected_index)
++            .is_some_and(|range| range.end <= index)
++        {
++            protected_index += 1;
++        }
++        if let Some(range) = protected.get(protected_index)
++            && range.contains(&index)
++        {
++            index = range.end;
++            continue;
++        }
++        let current = normalized.as_deref().unwrap_or(bytes);
++        if current[index] == b'\\' {
++            index += 2;
++            continue;
++        }
++        if &current[index..index + 2] != b"$$" {
++            index += 1;
++            continue;
++        }
++        let start = index + 2;
++        let mut end = start;
++        while end + 1 < current.len() {
++            if current[end] == b'\\' {
++                end += 2;
++            } else if &current[end..end + 2] == b"$$" {
++                break;
++            } else {
++                end += 1;
++            }
++        }
++        if end + 1 >= current.len() {
++            index += 2;
++            continue;
++        }
++        // CommonMark finds setext headings before math spans. Shield their markers
++        // so a standalone `=` inside a formula cannot split it into separate blocks.
++        for offset in start..end {
++            if matches!(bytes[offset], b'=' | b'-') {
++                normalized.get_or_insert_with(|| bytes.to_vec())[offset] = b'x';
++            }
++        }
++        index = end + 2;
++    }
++    match normalized {
++        None => Cow::Borrowed(text),
++        Some(output) => match String::from_utf8(output) {
++            Ok(output) => Cow::Owned(output),
++            Err(error) => {
++                log::error!("Invalid UTF-8 while normalizing math delimiters: {error}");
++                Cow::Borrowed(text)
++            }
++        },
++    }
++}
++
++fn math_event_contents(
++    text: &str,
++    math_source: &str,
++    range: &Range<usize>,
++    delimiter_width: usize,
++    parsed: CowStr<'_>,
++) -> SharedString {
++    let content_range = range.start + delimiter_width..range.end - delimiter_width;
++    let original = &text[content_range.clone()];
++    let normalized = &math_source[content_range];
++    if original == normalized {
++        return parsed.into_string().into();
++    }
++
++    // The math parser removes list/blockquote prefixes after newlines. Restore
++    // shielded characters from the corresponding source suffix, keeping those
++    // prefixes out of the formula and preserving source offsets.
++    let mut original_lines = original.split_inclusive('\n');
++    let mut normalized_lines = normalized.split_inclusive('\n');
++    let mut restored = String::with_capacity(parsed.len());
++    for line in parsed.split_inclusive('\n') {
++        let Some((original_line, normalized_line)) =
++            original_lines.next().zip(normalized_lines.next())
++        else {
++            log::error!("Math source and parsed content have different line counts");
++            return parsed.into_string().into();
++        };
++        if !normalized_line.ends_with(line) {
++            log::error!("Math content does not match normalized source");
++            return parsed.into_string().into();
++        }
++        restored.push_str(&original_line[original_line.len() - line.len()..]);
++    }
++    restored.into()
++}
++
+ pub(crate) fn parse_markdown_with_options(
+     text: &str,
+     parse_html: bool,
+@@ -311,7 +483,8 @@ pub(crate) fn parse_markdown_with_options(
+         }
+     }
+     let body_start = frontmatter.last().map_or(0, |(_, range)| range.end);
+-    let parser = Parser::new_ext(&text[body_start..], PARSE_OPTIONS);
++    let math_source = math_delimiter_source(text);
++    let parser = Parser::new_ext(&math_source[body_start..], PARSE_OPTIONS);
+     let mut link_definition_spans = parser
+         .reference_definitions()
+         .iter()
+@@ -731,7 +904,19 @@ pub(crate) fn parse_markdown_with_options(
+             pulldown_cmark::Event::TaskListMarker(checked) => {
+                 state.push_event(range, MarkdownEvent::TaskListMarker(checked))
+             }
+-            pulldown_cmark::Event::InlineMath(_) | pulldown_cmark::Event::DisplayMath(_) => {}
++            pulldown_cmark::Event::InlineMath(parsed) => {
++                let contents = math_event_contents(text, &math_source, &range, 1, parsed);
++                state.push_event(range, MarkdownEvent::InlineMath(contents));
++            }
++            pulldown_cmark::Event::DisplayMath(parsed) => {
++                let contents = math_event_contents(text, &math_source, &range, 2, parsed);
++                let event = if text[range.clone()].starts_with(r"\(") {
++                    MarkdownEvent::InlineMath(contents)
++                } else {
++                    MarkdownEvent::DisplayMath(contents)
++                };
++                state.push_event(range, event);
++            }
+         }
+     }
+ 
+@@ -838,6 +1023,10 @@ pub enum MarkdownEvent {
+     Code,
+     /// An inline code node that differs from the markdown source due to escape decoding.
+     SubstitutedCode(String),
++    /// An inline math node.
++    InlineMath(SharedString),
++    /// A display math node.
++    DisplayMath(SharedString),
+     /// An HTML node.
+     Html,
+     /// An inline HTML node.
+@@ -1045,9 +1234,8 @@ mod tests {
+     use super::*;
+ 
+     const CONDITIONAL_OPTIONS: Options = Options::ENABLE_YAML_STYLE_METADATA_BLOCKS;
+-    const UNWANTED_OPTIONS: Options = Options::ENABLE_MATH
+-        .union(Options::ENABLE_DEFINITION_LIST)
+-        .union(Options::ENABLE_WIKILINKS);
++    const UNWANTED_OPTIONS: Options =
++        Options::ENABLE_DEFINITION_LIST.union(Options::ENABLE_WIKILINKS);
+ 
+     #[test]
+     fn all_options_considered() {
+@@ -1846,6 +2034,151 @@ mod tests {
+         assert!(parsed.footnote_definitions.contains_key("b"));
+     }
+ 
++    #[test]
++    fn test_display_math_preserves_setext_lines_and_matrix_row_separators() {
++        let contents = r"
++\begin{bmatrix}
++1 & 2 \\
++3 & 4
++\end{bmatrix}
++\begin{bmatrix}
++x \\
++y
++\end{bmatrix}
++=
++\begin{bmatrix}
++5 \\
++11
++\end{bmatrix}
++";
++        for (opening, closing) in [("$$", "$$"), (r"\[", r"\]")] {
++            let source = format!("{opening}{contents}{closing}");
++            let parsed = parse_markdown_with_options(&source, false, false, false);
++            let formulas = parsed
++                .events
++                .iter()
++                .filter_map(|(range, event)| {
++                    if let MarkdownEvent::DisplayMath(contents) = event {
++                        Some((range.clone(), contents.as_ref()))
++                    } else {
++                        None
++                    }
++                })
++                .collect::<Vec<_>>();
++            assert_eq!(formulas, vec![(0..source.len(), contents)]);
++        }
++    }
++
++    #[test]
++    fn test_display_math_preserves_fourier_transform_and_container_prefixes() {
++        let contents = r"
++\mathcal{F}\{f(t)\}(\omega)
++=
++\int_{-\infty}^{\infty}
++f(t)e^{-i\omega t}\,dt
++";
++        for prefix in ["", "> ", "> > "] {
++            let formula = format!("$${contents}$$");
++            let source = formula
++                .lines()
++                .map(|line| format!("{prefix}{line}"))
++                .collect::<Vec<_>>()
++                .join("\n");
++            let parsed = parse_markdown_with_options(&source, false, false, false);
++            let formulas = parsed
++                .events
++                .iter()
++                .filter_map(|(_, event)| {
++                    if let MarkdownEvent::DisplayMath(contents) = event {
++                        Some(contents.as_ref())
++                    } else {
++                        None
++                    }
++                })
++                .collect::<Vec<_>>();
++            assert_eq!(formulas, vec![contents]);
++        }
++    }
++
++    #[test]
++    fn test_math_shielding_keeps_code_and_normal_setext_headings() {
++        let source = "```latex\n$$\nx\n=\ny\n$$\n```\n\nTitle\n=\n";
++        assert_eq!(math_delimiter_source(source), source);
++        assert_eq!(
++            math_delimiter_source("$$\nx\n=\nunfinished"),
++            "$$\nx\n=\nunfinished"
++        );
++        let parsed = parse_markdown_with_options(source, false, false, false);
++        assert!(
++            !parsed
++                .events
++                .iter()
++                .any(|(_, event)| matches!(event, MarkdownEvent::DisplayMath(_)))
++        );
++        assert!(
++            parsed.events.iter().any(|(_, event)| matches!(
++                event,
++                MarkdownEvent::Start(MarkdownTag::Heading { .. })
++            ))
++        );
++    }
++
++    #[test]
++    fn test_math_events_are_preserved() {
++        use MarkdownEvent::{DisplayMath, InlineMath, RootEnd, RootStart, Start, Text};
++        use MarkdownTag::Paragraph;
++
++        let parsed =
++            parse_markdown_with_options("Before $x^2$ after\n\n$$y$$", false, false, false);
++
++        assert_eq!(
++            parsed.events,
++            vec![
++                (0..19, RootStart),
++                (0..19, Start(Paragraph)),
++                (0..7, Text),
++                (7..12, InlineMath("x^2".into())),
++                (12..18, Text),
++                (0..19, End(MarkdownTagEnd::Paragraph)),
++                (0..19, RootEnd(0)),
++                (20..25, RootStart),
++                (20..25, Start(Paragraph)),
++                (20..25, DisplayMath("y".into())),
++                (20..25, End(MarkdownTagEnd::Paragraph)),
++                (20..25, RootEnd(1)),
++            ]
++        );
++    }
++
++    #[test]
++    fn test_heading_inline_math_event_ranges_are_preserved() {
++        use MarkdownEvent::{InlineMath, RootEnd, RootStart, Start, Text};
++        use MarkdownTag::Heading;
++        use pulldown_cmark::HeadingLevel;
++
++        let parsed = parse_markdown_with_options("# Title $x^2$", false, false, false);
++
++        assert_eq!(
++            parsed.events,
++            vec![
++                (0..13, RootStart),
++                (
++                    0..13,
++                    Start(Heading {
++                        level: HeadingLevel::H1,
++                        id: None,
++                        classes: Vec::new(),
++                        attrs: Vec::new(),
++                    })
++                ),
++                (2..8, Text),
++                (8..13, InlineMath("x^2".into())),
++                (0..13, End(MarkdownTagEnd::Heading(HeadingLevel::H1))),
++                (0..13, RootEnd(0)),
++            ]
++        );
++    }
++
+     #[test]
+     fn test_links_split_across_fragments() {
+         // This test verifies that links split across multiple text fragments due to escaping or other issues
+@@ -2084,4 +2417,43 @@ mod tests {
+             );
+         }
+     }
++    #[test]
++    fn test_bracket_math_preserves_source_offsets() {
++        let source = r"中文 \(x_1\) 和 \[\frac{1}{2}\] end";
++        let parsed = parse_markdown_with_options(source, false, false, false);
++        let formulas = parsed
++            .events
++            .iter()
++            .filter_map(|(range, event)| match event {
++                MarkdownEvent::InlineMath(contents) => {
++                    Some((range.clone(), contents.as_ref(), false))
++                }
++                MarkdownEvent::DisplayMath(contents) => {
++                    Some((range.clone(), contents.as_ref(), true))
++                }
++                _ => None,
++            })
++            .collect::<Vec<_>>();
++        assert_eq!(formulas.len(), 2);
++        assert_eq!(&source[formulas[0].0.clone()], r"\(x_1\)");
++        assert_eq!(formulas[0].1, "x_1");
++        assert!(!formulas[0].2);
++        assert_eq!(&source[formulas[1].0.clone()], r"\[\frac{1}{2}\]");
++        assert_eq!(formulas[1].1, r"\frac{1}{2}");
++        assert!(formulas[1].2);
++    }
++
++    #[test]
++    fn test_bracket_math_does_not_change_code_or_incomplete_formulas() {
++        let tick = char::from(96);
++        let code =
++            format!("{tick}\\(x\\){tick}\n\n{tick}{tick}{tick}latex\n\\[y\\]\n{tick}{tick}{tick}");
++        assert_eq!(math_delimiter_source(&code), code);
++        assert_eq!(math_delimiter_source(r"\\(escaped\\)"), r"\\(escaped\\)");
++        assert_eq!(math_delimiter_source(r"\(unfinished"), r"\(unfinished");
++        assert_eq!(
++            math_delimiter_source(r"$\text{\(literal\)}$"),
++            r"$\text{\(literal\)}$"
++        );
++    }
+ }
+diff --git a/crates/markdown_preview/src/markdown_preview_view.rs b/crates/markdown_preview/src/markdown_preview_view.rs
+index 3b0e9f6eb460300652d0a62c951582ea0e9ad29b..f3e7f2466cb9b8974696856a9f89a70f2ebfe80d 100644
+--- a/crates/markdown_preview/src/markdown_preview_view.rs
++++ b/crates/markdown_preview/src/markdown_preview_view.rs
+@@ -394,7 +394,7 @@ impl MarkdownPreviewView {
+                     None,
+                     MarkdownOptions {
+                         parse_html: true,
+-                        render_mermaid_diagrams: true,
++                        render_embedded_diagrams: true,
+                         parse_heading_slugs: true,
+                         render_metadata_blocks: true,
+                         ..Default::default()

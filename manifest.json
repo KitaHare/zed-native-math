@@ -1,0 +1,33 @@
+{
+  "version": "0.1.0",
+  "status": "experimental-source-release",
+  "license": "GPL-3.0-or-later",
+  "zed": {
+    "tag": "v1.25.3",
+    "commit": "8dd255c3eafb5231056fe4e6f601cedd011f1c93"
+  },
+  "patch": {
+    "file": "patches/zed-v1.25.3-native-math.patch",
+    "sha256": "ed1abf82a47d455586ad05593de6702dc82ebac149c2f43bcd9d2143188ce467"
+  },
+  "tested_platforms": [
+    "macOS on Apple Silicon"
+  ],
+  "upstream_math_implementation": {
+    "pull_request": "https://github.com/zed-industries/zed/pull/57339",
+    "author": "loomou",
+    "commit": "0676a0c"
+  },
+  "verification": {
+    "native_math_tests_passed": 8,
+    "native_application_built": true,
+    "agent_chat_rendering_confirmed": true,
+    "full_markdown_suite_run": false,
+    "build_helper_tests_passed": 6,
+    "patch_applies_to_clean_checkout": true,
+    "source_matches_tested_checkout": true,
+    "macos_packaging_helper_verified": true
+  },
+  "automatic_updater_included": false,
+  "rust_toolchain": "1.98.1"
+}
