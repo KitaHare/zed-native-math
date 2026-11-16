@@ -6,3 +6,4 @@ dist/
 *.app/
 *.dmg
 *.log
+.work/

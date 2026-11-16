@@ -7,11 +7,11 @@
     "commit": "8dd255c3eafb5231056fe4e6f601cedd011f1c93"
   },
   "patch": {
-    "file": "patches/zed-v1.25.3-native-math.patch",
-    "sha256": "eb1ee38acbe01016b55f3f71d6967b6fb993f25abcdd98d7905e581243c7b963"
+    "file": "patches/zed-v1.25.3-native-math.patch"
   },
   "tested_platforms": [
-    "macOS on Apple Silicon"
+    "macOS on Apple Silicon",
+    "Windows x64"
   ],
   "upstream_math_implementation": {
     "pull_request": "https://github.com/zed-industries/zed/pull/57339",
@@ -23,12 +23,43 @@
     "native_application_built": true,
     "agent_chat_rendering_confirmed": true,
     "full_markdown_suite_run": true,
-    "build_helper_tests_passed": 6,
+    "build_helper_tests_passed": 20,
     "patch_applies_to_clean_checkout": true,
     "source_matches_tested_checkout": true,
     "macos_packaging_helper_verified": true,
     "full_markdown_tests_passed": 213
   },
-  "automatic_updater_included": false,
+  "windows_verification": {
+    "architecture": "x86_64-pc-windows-msvc",
+    "build_helper_tests_passed": 22,
+    "patch_applies_to_clean_checkout": true,
+    "native_markdown_tests_status": "passed",
+    "native_markdown_tests_passed": 213,
+    "math_svg_decode_test_passed": true,
+    "native_application_build_status": "passed-debug-gui-and-cli",
+    "application_package_status": "passed",
+    "markdown_preview_status": "passed-visual-smoke",
+    "agent_chat_status": "passed-offline-imported-thread",
+    "msvc_version": "14.44.35207",
+    "windows_sdk_version": "10.0.26100.0"
+  },
+  "automatic_updater_included": true,
+  "windows_update": {
+    "channel": "stable",
+    "check_interval_seconds": 1800,
+    "verification": {
+      "build_helper_tests_passed": 22,
+      "updater_tests_passed": 24,
+      "native_markdown_tests_passed": 217,
+      "native_application_build_status": "passed-debug-gui-and-cli",
+      "application_package_status": "passed-version-smoke",
+      "markdown_preview_status": "passed-visual-smoke"
+    },
+    "seed": {
+      "tag": "v1.28.1",
+      "commit": "e8bc16acee5ae1937600d571d441c4b5d7b0d288",
+      "patch": "patches/zed-v1.28.1-native-math.patch"
+    }
+  },
   "rust_toolchain": "1.98.1"
 }
