@@ -70,6 +70,19 @@ class WindowsUpdateTests(unittest.TestCase):
                 build.assert_not_called()
         self.assertEqual(self.updater.state()["current"], self.current)
 
+    def test_pinned_rust_toolchain_only_installed_if_exact_windows_build_missing(self):
+        target = "1.98.1-x86_64-pc-windows-msvc"
+        for installed, needs_install in [
+            ("stable-x86_64-pc-windows-msvc\n" + target + " (active, default)", False),
+            ("1.98.1-x86_64-pc-windows-gnu\n1.98.10-x86_64-pc-windows-msvc", True),
+        ]:
+            with self.subTest(installed=installed), mock.patch.object(self.updater, "command", return_value=installed) as command:
+                self.updater.ensure_toolchain("1.98.1", {})
+                self.assertEqual(command.call_args_list[0].args[0], ["rustup", "toolchain", "list"])
+                self.assertEqual(command.call_count, 2 if needs_install else 1)
+                if needs_install:
+                    self.assertIn(target, command.call_args.args[0])
+
     def test_success_stages_without_replacing_current(self):
         with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
             with mock.patch.object(self.updater, "build_candidate", return_value=self.candidate):
@@ -318,8 +331,20 @@ class WindowsUpdateTests(unittest.TestCase):
         update.atomic_json(self.root / "manifest.json", {"windows_update": {"seed": {
             "tag": "v1.1.0", "commit": commit, "patch": prepared["patch"]["file"],
         }}})
+        # Replaying the maintained patch on its exact tag must use its tested lockfile.
+        with mock.patch.object(self.updater, "command", side_effect=command):
+            count = len(cargo_calls)
+            seed_source, _ = self.updater.prepare("v1.1.0", self.updater.state())
+            self.assertEqual(len(cargo_calls), count)
+            self.assertEqual((seed_source / "Cargo.lock").read_bytes(), (source / "Cargo.lock").read_bytes())
+        # An earlier run with the old math patch already conflicted for this release.
+        incomplete = self.root / ".work/update-sources/v1.2.0"
+        git("worktree", "add", "--detach", str(incomplete), "v1.2.0")
+        marker = incomplete / "renderer.rs"
+        marker.write_text("retained manual resolution in progress\n", encoding="utf-8")
         with mock.patch.object(self.updater, "command", side_effect=command):
             next_source, _ = self.updater.prepare("v1.2.0", self.updater.state())
+        self.assertEqual(marker.read_text(), "retained manual resolution in progress\n")
         self.assertIn("native math", (next_source / "renderer.rs").read_text())
         self.assertIn("next upstream release", (next_source / "renderer.rs").read_text())
         self.assertEqual(git("status", "--porcelain"), "")

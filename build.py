@@ -99,6 +99,10 @@ def cargo_command(action, release=False):
     command = ["cargo", "build", "--locked", "-p", "zed", "--bin", "zed"]
     if sys.platform == "win32":
         command.extend(["-p", "cli", "--bin", "cli"])
+        if not release:
+            # Zed treats debug builds as staff in this crate, implicitly enabling ACP beta.
+            # Match stable's feature selection without disabling legitimate server-granted flags.
+            command.extend(["--config", "profile.dev.package.feature_flags.debug-assertions=false"])
     command.extend(["--features", build_features()])
     if release:
         command.append("--release")

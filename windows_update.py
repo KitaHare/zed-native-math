@@ -205,6 +205,13 @@ class Updater:
     def command(self, command, cwd=None, environment=None):
         return run(command, cwd, environment, self.log)
 
+    def ensure_toolchain(self, channel, environment):
+        target = channel + "-x86_64-pc-windows-msvc"
+        installed = self.command(["rustup", "toolchain", "list"], environment=environment)
+        if not any(line.split()[:1] == [target] for line in installed.splitlines()):
+            self.command(["rustup", "toolchain", "install", target, "--profile", "minimal", "--no-self-update"],
+                         environment=environment)
+
     def build_action(self, action, source, manifest, environment, destination=None):
         command = ["powershell.exe", "-NoProfile", "-File", self.root / "build-windows.ps1",
                    action, "-Source", source, "-Manifest", manifest]
@@ -216,7 +223,8 @@ class Updater:
         recipe = read_json(Path(state["current"]["manifest"]))
         baseline_patch = Path(recipe["patch"]["file"])
         seed = read_json(self.root / "manifest.json").get("windows_update", {}).get("seed")
-        use_seed = seed and version(recipe["zed"]["tag"]) < version(seed["tag"])
+        use_seed = seed and version(recipe["zed"]["tag"]) < version(seed["tag"]) <= version(tag)
+        exact_seed = use_seed and tag == seed["tag"]
         if use_seed:
             baseline_patch = self.root / seed["patch"]
         if not self.repository.exists():
@@ -232,8 +240,11 @@ class Updater:
                 raise UpdateError("The maintained update patch base does not match its official tag")
         self.command(["git", "fetch", "--depth", "1", "origin", "tag", tag], self.repository)
         commit = self.command(["git", "rev-parse", "refs/tags/" + tag + "^{commit}"], self.repository)
-        source = self.root / ".work/update-sources" / tag
-        candidate = self.work / "candidates" / tag
+        # A maintained rebase is a different input from the patch that conflicted.
+        # Keep its checkout and evidence separate; never discard a manual resolution.
+        build_id = f"{tag}-from-{seed['tag']}" if use_seed else tag
+        source = self.root / ".work/update-sources" / build_id
+        candidate = self.work / "candidates" / build_id
         manifest_path = candidate / "manifest.json"
         preparation_path = candidate / "preparation.json"
         if manifest_path.is_file():
@@ -254,15 +265,18 @@ class Updater:
                                   + "; inspect/resolve its patch before retrying")
             source.parent.mkdir(parents=True, exist_ok=True)
             self.command(["git", "worktree", "add", "--detach", source, commit], self.repository)
-            # Rebase code using Git's three-way merge, not the old release's dependency lock.
-            self.command(["git", "apply", "--3way", "--index", "--exclude=Cargo.lock", baseline_patch], source)
+            if exact_seed:
+                self.command(["git", "apply", "--index", baseline_patch], source)
+            else:
+                # A different upstream version must keep its own dependency choices.
+                self.command(["git", "apply", "--3way", "--index", "--exclude=Cargo.lock", baseline_patch], source)
             atomic_json(preparation_path, {"commit": commit, "patch": str(baseline_patch)})
         environment = self.environment()
         channel = rust_channel(source)
-        self.command(["rustup", "toolchain", "install", channel, "--profile", "minimal", "--no-self-update"],
-                     environment=environment)
+        self.ensure_toolchain(channel, environment)
         environment["RUSTUP_TOOLCHAIN"] = channel
-        self.command(["cargo", "update", "--workspace"], source, environment)
+        if not exact_seed:
+            self.command(["cargo", "update", "--workspace"], source, environment)
         candidate.mkdir(parents=True, exist_ok=True)
         patch = candidate / "native-math.patch"
         # Binary-safe output; Git object IDs are not custom file-integrity checks.

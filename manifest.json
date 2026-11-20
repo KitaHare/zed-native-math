@@ -48,17 +48,22 @@
     "channel": "stable",
     "check_interval_seconds": 1800,
     "verification": {
-      "build_helper_tests_passed": 22,
-      "updater_tests_passed": 24,
-      "native_markdown_tests_passed": 217,
+      "build_helper_tests_passed": 23,
+      "updater_tests_passed": 25,
+      "native_markdown_tests_passed": 218,
       "native_application_build_status": "passed-debug-gui-and-cli",
       "application_package_status": "passed-version-smoke",
-      "markdown_preview_status": "passed-visual-smoke"
+      "markdown_preview_status": "passed-visual-smoke",
+      "antigravity_acp": {
+        "adapter_version": "1.5.0",
+        "status": "new-thread-ready-in-packaged-editor",
+        "model_prompt_sent": false
+      }
     },
     "seed": {
-      "tag": "v1.28.1",
-      "commit": "e8bc16acee5ae1937600d571d441c4b5d7b0d288",
-      "patch": "patches/zed-v1.28.1-native-math.patch"
+      "tag": "v1.29.2",
+      "commit": "2de9e435a5d98657f35c260b5f4dd0979df659e6",
+      "patch": "patches/zed-v1.29.2-native-math.patch"
     }
   },
   "rust_toolchain": "1.98.1"

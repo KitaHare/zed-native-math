@@ -131,6 +131,15 @@ class BuildHelperTests(unittest.TestCase):
         self.assertEqual(command[command.index("--features") + 1], "util/debug-embed")
         self.assertNotIn("--release", command)
 
+    def test_windows_debug_app_uses_stable_feature_flag_defaults(self):
+        override = "profile.dev.package.feature_flags.debug-assertions=false"
+        with mock.patch.object(builder.sys, "platform", "win32"):
+            command = builder.cargo_command("build")
+            self.assertIn(("--config", override), list(zip(command, command[1:])))
+            self.assertNotIn(override, builder.cargo_command("build", release=True))
+        with mock.patch.object(builder.sys, "platform", "darwin"):
+            self.assertNotIn(override, builder.cargo_command("build"))
+
     def test_macos_build_keeps_existing_features_and_binary(self):
         with mock.patch.object(builder.sys, "platform", "darwin"):
             command = builder.cargo_command("build")
