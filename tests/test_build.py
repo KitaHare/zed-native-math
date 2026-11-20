@@ -43,6 +43,12 @@ class BuildHelperTests(unittest.TestCase):
     def git(self, *arguments):
         return subprocess.check_output(["git", *arguments], cwd=self.source, stderr=subprocess.STDOUT)
 
+    def select_default(self, platform):
+        path = ROOT / "manifest.json"
+        self.addCleanup(builder.configure_manifest, path, platform=builder.sys.platform)
+        builder.configure_manifest(path, platform=platform)
+        return json.loads(path.read_bytes())
+
     def test_apply_is_version_checked_preserves_notice_and_is_idempotent(self):
         builder.apply_patch(self.source, self.patch, self.revision)
         self.assertEqual((self.source / "renderer.rs").read_text(), "native math renderer\n")
@@ -91,9 +97,11 @@ class BuildHelperTests(unittest.TestCase):
         self.assertFalse(destination.exists())
 
     def test_macos_package_contains_version_metadata_and_built_binary(self):
+        catalog = self.select_default("darwin")
+        self.assertEqual(builder.PATCH, ROOT / catalog["patch"]["file"])
         template = self.base / "Official.app"
         (template / "Contents/MacOS").mkdir(parents=True)
-        information = {"CFBundleShortVersionString": builder.MANIFEST["zed"]["tag"].removeprefix("v")}
+        information = {"CFBundleShortVersionString": catalog["zed"]["tag"].removeprefix("v")}
         with (template / "Contents/Info.plist").open("wb") as stream:
             plistlib.dump(information, stream)
         with mock.patch.object(builder.sys, "platform", "darwin"):
@@ -109,7 +117,7 @@ class BuildHelperTests(unittest.TestCase):
             "CFBundleShortVersionString", "CFBundleName", "CFBundleDisplayName",
             "CFBundleIdentifier", "CFBundleExecutable", "ZedMathBaseCommit", "LSEnvironment",
         })
-        self.assertEqual(packaged_information["ZedMathBaseCommit"], builder.BASE_COMMIT)
+        self.assertEqual(packaged_information["ZedMathBaseCommit"], catalog["zed"]["commit"])
         self.assertEqual((destination / "Contents/MacOS/zed").read_bytes(), b"community binary")
 
     def test_apply_preserves_utf8_readme_and_writes_lf_notice(self):
@@ -170,7 +178,7 @@ class BuildHelperTests(unittest.TestCase):
             "zed": {"tag": "v9.8.7", "commit": self.revision},
             "patch": {"file": self.patch.name}, "rust_toolchain": "1.98.1",
         }), encoding="utf-8")
-        with mock.patch.multiple(builder, MANIFEST=builder.MANIFEST, MANIFEST_PATH=builder.MANIFEST_PATH,
+        with mock.patch.multiple(builder, MANIFEST=builder.MANIFEST, MANIFEST_BYTES=builder.MANIFEST_BYTES,
                                  PATCH=builder.PATCH, BASE_COMMIT=builder.BASE_COMMIT):
             with mock.patch.object(builder.sys, "argv", ["build.py", "verify", "--source", str(self.source),
                                                         "--manifest", str(manifest)]):
@@ -221,6 +229,11 @@ class BuildHelperTests(unittest.TestCase):
         return binary
 
     def test_windows_package_contains_gui_cli_terminal_and_licenses(self):
+        catalog = self.select_default("win32")
+        seed = catalog["windows_update"]["seed"]
+        self.assertEqual(builder.PATCH, ROOT / seed["patch"])
+        self.assertEqual(builder.build_environment()["RELEASE_VERSION"], seed["tag"][1:])
+        self.assertEqual(builder.build_environment()["ZED_COMMIT_SHA"], seed["commit"])
         self.windows_package_inputs()
         destination = self.base / "Community Math"
         with mock.patch.object(builder.sys, "platform", "win32"):
@@ -231,8 +244,11 @@ class BuildHelperTests(unittest.TestCase):
         self.assertEqual((destination / "OpenConsole.exe").read_bytes(), b"OpenConsole.exe")
         self.assertTrue((destination / "LICENSE").is_file())
         self.assertTrue((destination / "licenses/ZED-LICENSE-GPL").is_file())
-        self.assertEqual((destination / "native-math-manifest.json").read_bytes(),
-                         (ROOT / "manifest.json").read_bytes())
+        packaged = json.loads((destination / "native-math-manifest.json").read_bytes())
+        self.assertEqual(packaged["zed"], {"tag": seed["tag"], "commit": seed["commit"]})
+        self.assertEqual(packaged["patch"]["file"], seed["patch"])
+        self.assertEqual(packaged["windows_verification"], catalog["windows_update"]["verification"])
+        self.assertNotIn("verification", packaged)
 
     def test_windows_missing_terminal_runtime_does_not_create_package(self):
         binary = self.windows_package_inputs()

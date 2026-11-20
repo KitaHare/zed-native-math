@@ -42,6 +42,46 @@ class WindowsUpdateTests(unittest.TestCase):
         return {"tag": tag, "commit": commit, "directory": str(directory),
                 "manifest": str(self.root / (tag + ".json"))}
 
+    def test_initialize_uses_packaged_revision_and_keeps_legacy_bootstrap(self):
+        catalog = update.read_json(ROOT / "manifest.json")
+        seed = catalog["windows_update"]["seed"]
+        current_pin = {"tag": seed["tag"], "commit": seed["commit"]}
+        for name, pin, patch in [
+            ("first-build", current_pin, seed["patch"]),
+            ("legacy-package", catalog["zed"], catalog["patch"]["file"]),
+            ("wrong-commit", {**current_pin, "commit": "0" * 40}, None),
+        ]:
+            with self.subTest(name=name):
+                root = self.root / name
+                updater = update.Updater(root)
+                folder = root / "dist/Zed Native Math (Community)"
+                folder.mkdir(parents=True)
+                (folder / "Zed.exe").write_bytes(b"test package")
+                update.atomic_json(root / "manifest.json", catalog)
+                update.atomic_json(folder / "native-math-manifest.json", {"zed": pin})
+                if patch is None:
+                    with self.assertRaises(update.UpdateError):
+                        updater.initialize()
+                    self.assertFalse(updater.state_path.exists())
+                    continue
+                updater.initialize()
+                installed = updater.state()["current"]
+                self.assertEqual((installed["tag"], installed["commit"]), (pin["tag"], pin["commit"]))
+                recipe = update.read_json(Path(installed["manifest"]))
+                self.assertEqual(recipe["zed"], pin)
+                self.assertEqual(Path(recipe["patch"]["file"]), root / patch)
+                if name == "first-build":
+                    with mock.patch.object(update, "latest_release", return_value=pin["tag"]), \
+                         mock.patch.object(updater, "build_candidate") as build:
+                        self.assertEqual(updater.sync(True), "up-to-date")
+                        build.assert_not_called()
+
+    def test_reinstall_does_not_reset_existing_release_pointers(self):
+        self.updater.change(enabled=False, pending=self.candidate, previous=self.release("v0.9.0", "c" * 40))
+        before = self.updater.state()
+        self.updater.initialize()
+        self.assertEqual(self.updater.state(), {**before, "enabled": True})
+
     def test_stable_tag_validation_and_numeric_order(self):
         self.assertGreater(update.version("v1.10.0"), update.version("v1.9.99"))
         for tag in ("main", "v1.1.0-pre", "../v1.1.0", None):

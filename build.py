@@ -11,18 +11,25 @@ import shutil
 import subprocess
 import sys
 
+from build_recipe import default_recipe
+
 
 ROOT = Path(__file__).resolve().parent
-def configure_manifest(path):
-    """Select an explicit build recipe without changing the pinned default."""
-    global MANIFEST, MANIFEST_PATH, PATCH, BASE_COMMIT
-    MANIFEST_PATH = path.resolve()
-    MANIFEST = json.loads(path.read_text(encoding="utf-8"))
+
+
+def configure_manifest(path, *, platform=None):
+    """Explicit manifests are literal recipes; only the default is platform-selected."""
+    global MANIFEST, MANIFEST_BYTES, PATCH, BASE_COMMIT
+    MANIFEST_BYTES = path.read_bytes()
+    catalog = json.loads(MANIFEST_BYTES)
+    MANIFEST = default_recipe(catalog, platform) if platform else catalog
+    if MANIFEST is not catalog:
+        MANIFEST_BYTES = (json.dumps(MANIFEST, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     PATCH = (path.parent / MANIFEST["patch"]["file"]).resolve()
     BASE_COMMIT = MANIFEST["zed"]["commit"]
 
 
-configure_manifest(ROOT / "manifest.json")
+configure_manifest(ROOT / "manifest.json", platform=sys.platform)
 MACOS_FEATURES = "gpui_platform/runtime_shaders,util/debug-embed"
 UPDATE_EXPLANATION = (
     "Community source build. Update by rebuilding from the Zed Native Math patch repository."
@@ -132,7 +139,6 @@ def package_windows_application(source, destination, release=False):
         binary.parent / "OpenConsole.exe": Path("OpenConsole.exe"),
         ROOT / "LICENSE": Path("LICENSE"),
         ROOT / "NOTICE.md": Path("NOTICE.md"),
-        MANIFEST_PATH: Path("native-math-manifest.json"),
         source / "LICENSE-GPL": Path("licenses/ZED-LICENSE-GPL"),
         source / "LICENSE-APACHE": Path("licenses/ZED-LICENSE-APACHE"),
     }
@@ -145,6 +151,7 @@ def package_windows_application(source, destination, release=False):
         output = destination / relative
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, output)
+    (destination / "native-math-manifest.json").write_bytes(MANIFEST_BYTES)
     print("Built community application: " + str(destination / "Zed.exe"))
 
 
@@ -184,7 +191,7 @@ def main():
     parser.add_argument("action", choices=["verify", "apply", "test", "build", "package"])
     parser.add_argument("--source", type=Path, required=True, help="separate official Zed source checkout")
     parser.add_argument("--manifest", type=Path,
-                        help="explicit version/patch recipe (default: repository manifest.json)")
+                        help="use this exact recipe instead of the platform default from manifest.json")
     parser.add_argument("--template", type=Path, default=Path("/Applications/Zed.app"))
     parser.add_argument("--destination", type=Path,
                         default=(ROOT / "dist/Zed Native Math (Community)" if sys.platform == "win32"

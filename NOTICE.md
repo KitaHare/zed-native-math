@@ -3,7 +3,7 @@
 This is an unofficial community source patch for Zed. It is not a Zed Industries release.
 
 - Zed upstream: https://github.com/zed-industries/zed
-- Pinned base: v1.25.3, commit 8dd255c3eafb5231056fe4e6f601cedd011f1c93.
+- The Windows and macOS source revisions are recorded in manifest.json (windows_update.seed and zed, respectively).
 - Modified editor crates (markdown, acp_thread, agent_ui and markdown_preview) declare GPL-3.0-or-later. The GPL v3 license text is included in LICENSE.
 - Zed's other components retain their upstream terms. The upstream Apache license notice is preserved in licenses/ZED-LICENSE-APACHE; this does not make this patch Apache-licensed.
 - Math rendering implementation: loomou, https://github.com/zed-industries/zed/pull/57339, reference commit 0676a0c. The patch includes adapted implementation and tests from that work. Credit must remain with the upstream contributors.

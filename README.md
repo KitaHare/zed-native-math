@@ -4,9 +4,11 @@
 
 ![Zed 原生 Markdown 预览中的矩阵与傅里叶变换](assets/native-rendering.jpg)
 
-这是社区维护的**源码补丁**，不是扩展商店插件。首次使用需编译完整 Zed，请为依赖下载和构建缓存预留时间与磁盘空间。默认构建基线为 **Zed 1.25.3**（Windows x64、Apple Silicon macOS 已测试）；Windows 更新器另已验证 **1.29.2**，包括数学预览和 Antigravity 1.5.0 创建新会话。版本、提交和测试结果见 [manifest.json](manifest.json)。
+这是社区维护的**源码补丁**，不是扩展商店插件。首次使用需编译完整 Zed，请为依赖下载和构建缓存预留时间与磁盘空间。各平台的补丁、提交和验证记录见 [manifest.json](manifest.json)。
 
-## Windows x64：首次构建
+## Windows x64：直接构建 Zed 1.29.2
+
+这一版已验证数学预览和 Antigravity 1.5.0 新会话。已启用桌面更新器的用户不需要重新执行首次构建。
 
 安装 Git、Python 3.9+、rustup、CMake，以及 Visual Studio 2022 17.14 或对应的 Build Tools。选择 **Desktop development with C++**，包含 MSVC 14.44+ x64/x86 工具、匹配版本的 Spectre-mitigated libraries 和 Windows SDK 10.0.26100+。如果路径含中文，使用 [NASM 3.02 Windows x64](https://www.nasm.us/pub/nasm/releasebuilds/3.02/win64/) 并将其加入 PATH。
 
@@ -14,7 +16,7 @@
 
 ```powershell
 rustup toolchain install 1.98.1-x86_64-pc-windows-msvc --profile minimal
-git clone --depth 1 --branch v1.25.3 --single-branch https://github.com/zed-industries/zed.git .work/zed-upstream
+git clone --depth 1 --branch v1.29.2 --single-branch https://github.com/zed-industries/zed.git .work/zed-upstream
 .\build-windows.ps1 apply
 .\build-windows.ps1 test
 .\build-windows.ps1 build
@@ -39,7 +41,7 @@ git clone --depth 1 --branch v1.25.3 --single-branch https://github.com/zed-indu
 
 回退不会覆盖升级后的聊天；如需恢复数据库，先保留当前数据，再从 `status` 中的 `last_database_backup` 找到升级前快照。要暂停更新，用 `disable`，恢复用 `install`；要移除计划任务并让桌面图标直达当前版，用 `uninstall`。
 
-## macOS：构建并打包
+## macOS（Apple Silicon）：构建并打包 Zed 1.25.3
 
 安装 Git、Python 3.9+、rustup、CMake、Xcode 和 Command Line Tools。打包需要同版本的官方 `/Applications/Zed.app`（**1.25.3**）作为模板。在本仓库根目录运行：
 

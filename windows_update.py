@@ -17,6 +17,8 @@ import urllib.request
 import urllib.error
 import zipfile
 
+from build_recipe import default_recipe
+
 
 ROOT = Path(__file__).resolve().parent
 REPOSITORY = "https://github.com/zed-industries/zed.git"
@@ -174,9 +176,14 @@ class Updater:
         if not (package / "Zed.exe").is_file():
             raise UpdateError("Build and package the initial community application first")
         manifest = read_json(package / "native-math-manifest.json")
-        recipe = read_json(self.root / "manifest.json")
+        catalog = read_json(self.root / "manifest.json")
+        recipe = default_recipe(catalog, "win32")
+        # A user may have packaged the old Windows baseline before installing
+        # the updater. Bootstrap it as that release, never as the new seed.
         if manifest["zed"] != recipe["zed"]:
-            raise UpdateError("Initial package does not match the repository's pinned version")
+            if manifest["zed"] != catalog["zed"]:
+                raise UpdateError("Initial package does not match a supported Windows build revision")
+            recipe = catalog
         recipe["patch"]["file"] = str((self.root / recipe["patch"]["file"]).resolve())
         recipe_path = self.work / "initial-manifest.json"
         atomic_json(recipe_path, recipe)
