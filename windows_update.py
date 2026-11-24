@@ -407,7 +407,7 @@ class Updater:
             tag = None
             try:
                 tag = latest_release()
-                self.change(last_checked=now(), latest_tag=tag, last_error=None)
+                self.change(last_checked=now(), latest_tag=tag, last_error=None, last_error_kind=None)
                 installed = state.get("pending") or state["current"]
                 if version(tag) <= version(installed["tag"]):
                     self.change(phase="ready" if state.get("pending") else "up-to-date")
@@ -417,7 +417,7 @@ class Updater:
                     return "held-after-rollback"
                 # Do not retry an unchanged patch/compiler failure every 30 minutes.
                 if state.get("failed_tag") == tag and not force:
-                    self.change(phase="failed", last_error=state.get("failure_detail"))
+                    self.change(phase="failed", last_error=state.get("failure_detail"), last_error_kind="update")
                     return "failed-awaiting-retry"
                 self.change(phase="preparing", building_tag=tag, failed_tag=None, failure_detail=None)
                 candidate = self.build_candidate(tag, state)
@@ -426,9 +426,18 @@ class Updater:
                 return "ready"
             except Exception as error:
                 retry_network = isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError))
-                self.change(phase="failed", last_checked=now(), last_error=str(error),
-                            failed_tag=None if retry_network else tag,
-                            failure_detail=str(error), building_tag=None)
+                checked_at = now()
+                detail = str(error)
+                kind = "network" if retry_network else "update"
+                fields = dict(phase="failed", last_checked=checked_at, last_error=detail,
+                              last_error_kind=kind, building_tag=None)
+                # An interrupted release check must not forget a failed candidate.
+                if not retry_network:
+                    fields.update(failed_tag=tag, failure_detail=detail)
+                self.change(**fields)
+                stage = f"updating {tag}" if tag else f"checking {RELEASE_API}"
+                with self.log.open("a", encoding="utf-8") as log:
+                    log.write(f"\n[{checked_at}] {kind} error while {stage}: {detail}\n")
                 return "failed"
 
     def promote(self, running):
@@ -483,11 +492,12 @@ class Updater:
                              cwd=self.root, creationflags=subprocess.CREATE_NO_WINDOW,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         failure_key = state.get("failed_tag") or state.get("last_checked")
-        if state.get("last_error") and state.get("notified_failure") != failure_key:
+        if (state.get("last_error") and state.get("last_error_kind") != "network"
+                and state.get("notified_failure") != failure_key):
             self.change(notified_failure=failure_key)
             import ctypes
             ctypes.windll.user32.MessageBoxW(None,
-                "官方更新暂未通过构建或测试，继续使用现有数学版。\n\n"
+                "官方更新未完成，继续使用现有数学版。\n\n"
                 + str(state["last_error"])[-1200:] + "\n\n日志：" + str(self.log),
                 "Zed Native Math 更新未完成", 0x30)
 

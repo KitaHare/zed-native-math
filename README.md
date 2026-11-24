@@ -31,7 +31,7 @@ git clone --depth 1 --branch v1.29.2 --single-branch https://github.com/zed-indu
 
 更新器在登录、启动和每 30 分钟检查一次，合并重复检查。发现新版后，它在本机应用补丁、测试并打包。**成功后，完全退出 Zed，再双击桌面图标**，启动器会先备份数据库再切换。
 
-如果更新失败，当前版仍可用，原因见 `.work/windows-updates/update.log`。若是补丁冲突，等本仓库提供适配后，在仓库根目录运行 `git pull --ff-only`，再执行下面的 `retry`。更新器跟踪的是上游 Zed，不会替你更新本仓库。
+如果更新失败，当前版仍可用，原因见 `.work/windows-updates/update.log`。HTTPS 断线或超时会记入日志，由后台自动重试，不弹窗。若是补丁冲突，等本仓库提供适配后，在仓库根目录运行 `git pull --ff-only`，再执行下面的 `retry`。更新器跟踪的是上游 Zed，不会替你更新本仓库。
 
 ```powershell
 .\install-windows-updates.ps1 status     # 查看当前版本、待切换版本或失败原因

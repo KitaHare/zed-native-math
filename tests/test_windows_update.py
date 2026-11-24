@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -141,13 +142,24 @@ class WindowsUpdateTests(unittest.TestCase):
         self.assertEqual(state["current"], self.current)
         self.assertEqual(state["pending"], self.candidate)
         self.assertIn("patch conflict", state["last_error"])
+        with mock.patch.object(update, "stable_is_running", return_value=True), \
+             mock.patch.object(update.subprocess, "Popen"), \
+             mock.patch("ctypes.windll.user32.MessageBoxW") as alert:
+            self.updater.launch([])
+            self.updater.launch([])
+        alert.assert_called_once()
+        self.assertIn("patch conflict", alert.call_args.args[1])
 
     def test_unchanged_failure_is_not_rebuilt_until_explicit_retry(self):
         self.updater.change(failed_tag="v1.1.0", failure_detail="compiler error")
+        with mock.patch.object(update, "latest_release", side_effect=TimeoutError("offline")):
+            self.assertEqual(self.updater.sync(True), "failed")
+        self.updater.change(last_checked="2000-01-01T00:00:00+00:00")
         with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
             with mock.patch.object(self.updater, "build_candidate", return_value=self.candidate) as build:
                 self.assertEqual(self.updater.sync(), "failed-awaiting-retry")
                 build.assert_not_called()
+                self.assertEqual(self.updater.state()["last_error"], "compiler error")
                 self.assertEqual(self.updater.sync(True), "ready")
                 build.assert_called_once()
 
@@ -159,19 +171,40 @@ class WindowsUpdateTests(unittest.TestCase):
             self.assertEqual(self.updater.sync(), "not-due")
             latest.assert_not_called()
 
-    def test_network_failure_is_recorded_and_current_remains_usable(self):
-        with mock.patch.object(update, "latest_release", side_effect=TimeoutError("offline")):
+    def test_tls_disconnect_is_logged_without_a_popup_and_next_check_recovers(self):
+        failure = update.urllib.error.URLError(
+            ssl.SSLEOFError(8, "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol"))
+        with mock.patch.object(update.urllib.request, "urlopen", side_effect=failure) as request, \
+             mock.patch.object(update.time, "sleep"):
             self.assertEqual(self.updater.sync(True), "failed")
+        self.assertEqual(request.call_count, 3)
         state = self.updater.state()
         self.assertEqual(state["current"], self.current)
-        self.assertEqual(state["last_error"], "offline")
-        self.assertIsNone(state["failed_tag"])
+        self.assertEqual(state["last_error"], str(failure))
+        self.assertIsNone(state.get("failed_tag"))
+        with mock.patch.object(update, "stable_is_running", return_value=True), \
+             mock.patch.object(update.subprocess, "Popen") as launch, \
+             mock.patch("ctypes.windll.user32.MessageBoxW") as alert:
+            self.updater.launch([])
+        alert.assert_not_called()
+        self.assertEqual(launch.call_args_list[0].args[0], [str(Path(self.current["directory"]) / "Zed.exe")])
+        self.assertEqual(launch.call_args_list[1].args[0][-1], "sync")
+        log = self.updater.log.read_text(encoding="utf-8")
+        self.assertIn(update.RELEASE_API, log)
+        self.assertIn("UNEXPECTED_EOF_WHILE_READING", log)
+
+        self.updater.change(last_checked="2000-01-01T00:00:00+00:00")
+        with mock.patch.object(update, "latest_release", return_value=self.current["tag"]), \
+             mock.patch.object(self.updater, "build_candidate") as build:
+            self.assertEqual(self.updater.sync(), "up-to-date")
+        build.assert_not_called()
+        self.assertIsNone(self.updater.state()["last_error"])
 
     def test_network_failure_during_candidate_download_can_retry_next_cycle(self):
         with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
             with mock.patch.object(self.updater, "build_candidate", side_effect=TimeoutError("download timeout")):
                 self.assertEqual(self.updater.sync(True), "failed")
-        self.assertIsNone(self.updater.state()["failed_tag"])
+        self.assertIsNone(self.updater.state().get("failed_tag"))
 
     def test_missing_math_test_evidence_stops_before_full_build(self):
         manifest = self.root / "candidate.json"
