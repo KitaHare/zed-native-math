@@ -21,7 +21,7 @@ class BuildHelperTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         environment = mock.patch.dict(os.environ, {"CARGO_TARGET_DIR": "target", "CARGO_BUILD_TARGET": ""})
         environment.start()
         self.addCleanup(environment.stop)
@@ -317,7 +317,8 @@ class BuildHelperTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, expected, result.stderr.decode(errors="replace"))
             if expected:
-                self.assertIn(b"MSVC 14.44", result.stderr)
+                normalized_stderr = " ".join(result.stderr.decode(errors="replace").split())
+                self.assertIn("MSVC 14.44", normalized_stderr)
             else:
                 self.assertIn(b"native test reached", result.stdout)
 
@@ -336,7 +337,8 @@ class BuildHelperTests(unittest.TestCase):
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
-        self.assertEqual(Path(result.stdout.decode().strip()), nasm)
+        self.assertEqual(os.path.normcase(Path(result.stdout.decode().strip()).resolve()),
+                         os.path.normcase(nasm.resolve()))
 
     @unittest.skipUnless(os.name == "nt", "Windows PowerShell entry point")
     def test_windows_entry_point_allows_stderr_and_preserves_exit_code(self):
