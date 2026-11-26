@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Python helper and updater tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check manifest and patch formatting
+        shell: bash
+        run: |
+          python3 -c "import json, pathlib; data = json.loads(pathlib.Path('manifest.json').read_text(encoding='utf-8')); seed = data['windows_update']['seed']; assert pathlib.Path(seed['patch']).is_file(), seed['patch']; assert pathlib.Path(data['patch']['file']).is_file()"
+          git diff --check

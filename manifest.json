@@ -45,26 +45,23 @@
   },
   "automatic_updater_included": true,
   "windows_update": {
+    "mode": "release",
+    "repository": "KitaHare/zed-native-math",
     "channel": "stable",
-    "check_interval_seconds": 1800,
+    "check_interval_seconds": 21600,
     "verification": {
-      "build_helper_tests_passed": 23,
-      "updater_tests_passed": 27,
-      "native_markdown_tests_passed": 218,
-      "native_application_build_status": "passed-debug-gui-and-cli",
-      "application_package_status": "passed-version-smoke",
-      "markdown_preview_status": "passed-visual-smoke",
-      "antigravity_acp": {
-        "adapter_version": "1.5.0",
-        "status": "new-thread-ready-in-packaged-editor",
-        "model_prompt_sent": false
-      }
+      "build_helper_tests_passed": 27,
+      "updater_tests_passed": 21,
+      "patch_applies_to_clean_checkout": true,
+      "native_markdown_tests_passed": 217,
+      "math_svg_decode_test_passed": true,
+      "native_application_build_status": "ci-release-pipeline"
     },
     "seed": {
-      "tag": "v1.29.2",
-      "commit": "2de9e435a5d98657f35c260b5f4dd0979df659e6",
+      "tag": "v1.30.2",
+      "commit": "610ea4b8de1c6e887f03563f067278002f41256e",
       "rust_toolchain": "1.98.1",
-      "patch": "patches/zed-v1.29.2-native-math.patch"
+      "patch": "patches/zed-v1.30.2-native-math.patch"
     }
   },
   "rust_toolchain": "1.98.1"

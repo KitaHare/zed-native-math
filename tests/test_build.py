@@ -353,6 +353,107 @@ class BuildHelperTests(unittest.TestCase):
         self.assertEqual(result.returncode, 23, result.stderr.decode(errors="replace"))
         self.assertIn(b"Cargo progress on stderr", result.stderr)
 
+    def test_release_build_environment_sets_ci_safe_defaults_and_allows_overrides(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            environment = builder.build_environment()
+        self.assertEqual(environment["CARGO_PROFILE_RELEASE_DEBUG"], "0")
+        self.assertEqual(environment["CARGO_PROFILE_RELEASE_LTO"], "false")
+        self.assertEqual(environment["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"], "16")
+        self.assertEqual(environment["CARGO_PROFILE_RELEASE_STRIP"], "symbols")
+        with mock.patch.dict(os.environ, {"CARGO_PROFILE_RELEASE_LTO": "thin"}):
+            self.assertEqual(builder.build_environment()["CARGO_PROFILE_RELEASE_LTO"], "thin")
+
+    def test_prepare_upstream_supports_exact_seed_and_three_way_retarget(self):
+        (self.source / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.98.1"\n', encoding="utf-8")
+        (self.source / "Cargo.lock").write_text("base lock\n", encoding="utf-8")
+        self.git("add", "rust-toolchain.toml", "Cargo.lock")
+        self.git("commit", "-m", "toolchain and lock")
+        base_revision = self.git("rev-parse", "HEAD").decode().strip()
+
+        (self.source / "renderer.rs").write_text("native math renderer\n", encoding="utf-8")
+        (self.source / "Cargo.lock").write_text("patched lock\n", encoding="utf-8")
+        seed_patch = self.base / "seed.patch"
+        seed_patch.write_bytes(self.git("diff", "--binary", "--full-index"))
+        self.git("restore", "renderer.rs", "Cargo.lock")
+
+        with mock.patch.multiple(builder, PATCH=seed_patch, BASE_COMMIT=base_revision):
+            check = builder.prepare_upstream(self.source, "v1.30.2", self.base / "unused", check_only=True)
+            self.assertTrue(check["exact_seed"])
+            self.assertEqual(check["rust_toolchain"], "1.98.1")
+
+            out_exact = self.base / "out-exact"
+            exact = builder.prepare_upstream(self.source, "v1.30.2", out_exact)
+            self.assertTrue(exact["exact_seed"])
+            self.assertTrue(Path(exact["manifest"]).is_file())
+            exported = Path(exact["patch"]).read_text(encoding="utf-8")
+            self.assertIn("native math renderer", exported)
+            self.assertNotIn("Review this PR", exported)
+            self.assertTrue((self.source / "README.md").read_text(encoding="utf-8").startswith(builder.NOTICE))
+
+        # Reset and create a newer upstream commit to exercise 3-way retargeting.
+        self.git("reset", "--hard", base_revision)
+        (self.source / "Cargo.lock").write_text("newer upstream lock\n", encoding="utf-8")
+        (self.source / "extra.rs").write_text("new upstream file\n", encoding="utf-8")
+        self.git("add", "Cargo.lock", "extra.rs")
+        self.git("commit", "-m", "newer upstream release")
+        newer_revision = self.git("rev-parse", "HEAD").decode().strip()
+
+        real_run = builder.run
+
+        def fake_run(arguments, source=None, capture=False, environment=None, check=True):
+            if arguments[:4] == ["cargo", "update", "-p", "markdown"]:
+                (Path(source) / "Cargo.lock").write_text("newer upstream lock plus math\n", encoding="utf-8")
+                return subprocess.CompletedProcess(arguments, 0, b"", b"")
+            return real_run(arguments, source=source, capture=capture, environment=environment, check=check)
+
+        with mock.patch.multiple(builder, PATCH=seed_patch, BASE_COMMIT=base_revision), \
+             mock.patch.object(builder, "run", side_effect=fake_run):
+            out_next = self.base / "out-next"
+            retargeted = builder.prepare_upstream(self.source, "v1.31.0", out_next)
+            self.assertFalse(retargeted["exact_seed"])
+            self.assertEqual(retargeted["commit"], newer_revision)
+            self.assertEqual((self.source / "Cargo.lock").read_text(encoding="utf-8"),
+                             "newer upstream lock plus math\n")
+            manifest = json.loads(Path(retargeted["manifest"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["zed"], {"tag": "v1.31.0", "commit": newer_revision})
+
+    def test_archive_windows_package_uses_posix_entries_and_checks_completeness(self):
+        import zipfile
+        self.windows_package_inputs(release=True)
+        package_dir = self.base / "pkg"
+        with mock.patch.object(builder.sys, "platform", "win32"):
+            builder.package_windows_application(self.source, package_dir, release=True)
+        archive = self.base / "release.zip"
+        builder.archive_windows_package(package_dir, archive)
+        with zipfile.ZipFile(archive) as bundle:
+            names = set(bundle.namelist())
+        self.assertIn("Zed.exe", names)
+        self.assertIn("bin/zed.exe", names)
+        self.assertIn("licenses/ZED-LICENSE-GPL", names)
+        self.assertIn("native-math-manifest.json", names)
+        self.assertFalse(any("\\" in name for name in names))
+
+        (package_dir / "conpty.dll").unlink()
+        with self.assertRaisesRegex(builder.BuildError, "conpty.dll"):
+            builder.archive_windows_package(package_dir, self.base / "broken.zip")
+
+    def test_ci_plan_release_resolves_seed_and_skips_published_assets(self):
+        plan_spec = importlib.util.spec_from_file_location(
+            "plan_release", ROOT / ".github/scripts/plan_release.py"
+        )
+        plan = importlib.util.module_from_spec(plan_spec)
+        plan_spec.loader.exec_module(plan)
+        manifest = json.loads((ROOT / "manifest.json").read_bytes())
+        seed_tag = manifest["windows_update"]["seed"]["tag"]
+        self.assertEqual(plan.resolve_zed_tag("", "push", manifest), seed_tag)
+        self.assertEqual(plan.resolve_zed_tag("v1.31.0", "workflow_dispatch", manifest), "v1.31.0")
+        with mock.patch.object(plan, "fetch_json", return_value={"tag_name": "v1.32.0", "draft": False, "prerelease": False}):
+            self.assertEqual(plan.resolve_zed_tag("latest", "workflow_dispatch", manifest), "v1.32.0")
+            self.assertEqual(plan.resolve_zed_tag("", "schedule", manifest), "v1.32.0")
+        with mock.patch.object(plan, "fetch_json", return_value={"assets": [{"name": "zed-native-math-v1.30.2-windows-x64.zip"}]}):
+            self.assertTrue(plan.release_asset_exists("KitaHare/zed-native-math", "v1.30.2", "zed-native-math-v1.30.2-windows-x64.zip"))
+            self.assertFalse(plan.release_asset_exists("KitaHare/zed-native-math", "v1.30.2", "other.zip"))
+
 
 if __name__ == "__main__":
     unittest.main()

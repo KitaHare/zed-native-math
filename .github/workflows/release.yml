@@ -1,0 +1,255 @@
+name: Build and Publish Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      zed_tag:
+        description: "Upstream Zed tag (blank = pinned seed in manifest.json, 'latest' = upstream stable)"
+        required: false
+        default: ""
+      release_suffix:
+        description: "Optional revision suffix for re-releasing the same Zed version (e.g. math.2)"
+        required: false
+        default: ""
+      force_rebuild:
+        description: "Rebuild and overwrite assets even if the release already exists"
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    # Weekly check every Monday at 02:00 UTC instead of chasing every patch release locally.
+    - cron: "0 2 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - "manifest.json"
+      - "patches/**"
+      - "build.py"
+      - "build_recipe.py"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      should_build: ${{ steps.plan.outputs.should_build }}
+      zed_tag: ${{ steps.plan.outputs.zed_tag }}
+      zed_commit: ${{ steps.plan.outputs.zed_commit }}
+      rust_toolchain: ${{ steps.plan.outputs.rust_toolchain }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      asset_name: ${{ steps.plan.outputs.asset_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check upstream release and patch compatibility
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 .github/scripts/plan_release.py \
+            --zed-tag "${{ inputs.zed_tag }}" \
+            --release-suffix "${{ inputs.release_suffix }}" \
+            ${{ inputs.force_rebuild && '--force-rebuild' || '' }} \
+            --conflict-report .work/conflict.log
+
+      - name: Open or update upstream conflict issue on scheduled drift
+        if: steps.plan.outputs.conflict == 'true' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ZED_TAG: ${{ steps.plan.outputs.zed_tag }}
+        run: |
+          title="Upstream math patch conflict on ${ZED_TAG}"
+          existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number // empty')
+          body=$(printf "Scheduled preflight detected a patch conflict when applying the maintained native math patch to upstream Zed \`%s\`.\n\nNo Windows build minutes were consumed.\n\n\`\`\`text\n%s\n\`\`\`\n" "$ZED_TAG" "$(tail -n 80 .work/conflict.log)")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+  build-windows:
+    needs: plan
+    if: needs.plan.outputs.should_build == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      ZED_TAG: ${{ needs.plan.outputs.zed_tag }}
+      ZED_COMMIT: ${{ needs.plan.outputs.zed_commit }}
+      RUST_TOOLCHAIN: ${{ needs.plan.outputs.rust_toolchain }}
+      RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+      ASSET_NAME: ${{ needs.plan.outputs.asset_name }}
+      CARGO_BUILD_JOBS: "4"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_STRIP: "symbols"
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Free runner disk space
+        shell: pwsh
+        run: |
+          $paths = @(
+            'C:\Android',
+            'C:\ghc',
+            'C:\msys64',
+            'C:\Strawberry',
+            'C:\SeleniumWebDrivers',
+            'C:\ProgramData\chocolatey\lib'
+          )
+          foreach ($path in $paths) {
+            if (Test-Path -LiteralPath $path) {
+              Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Get-PSDrive C | Select-Object Used, Free
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Ensure MSVC Spectre libraries and NASM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) { throw 'Visual Studio C++ tools not found on runner.' }
+          Import-Module (Join-Path $vsPath 'Common7\Tools\Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+          $compiler = Get-Command cl.exe -ErrorAction Stop
+          $spectre = [IO.Path]::GetFullPath((Join-Path (Split-Path $compiler.Source -Parent) '..\..\..\lib\spectre\x64'))
+          if (-not (Test-Path -LiteralPath $spectre)) {
+            $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+            if (-not (Test-Path -LiteralPath $installer)) {
+              $installer = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe'
+            }
+            Write-Host "Installing MSVC Spectre-mitigated libraries..."
+            $proc = Start-Process -FilePath $installer -ArgumentList @(
+              'modify', '--installPath', "`"$vsPath`"",
+              '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
+              '--quiet', '--norestart', '--wait'
+            ) -NoNewWindow -Wait -PassThru
+            if ($proc.ExitCode -notin @(0, 3010)) {
+              throw "VS installer exited with code $($proc.ExitCode)"
+            }
+          }
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            $nasmZip = Join-Path $env:RUNNER_TEMP 'nasm-3.02-win64.zip'
+            $nasmDir = Join-Path $env:RUNNER_TEMP 'nasm'
+            Invoke-WebRequest -Uri 'https://www.nasm.us/pub/nasm/releasebuilds/3.02/win64/nasm-3.02-win64.zip' -OutFile $nasmZip
+            Expand-Archive -Path $nasmZip -DestinationPath $nasmDir -Force
+            (Join-Path $nasmDir 'nasm-3.02') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install "${env:RUST_TOOLCHAIN}-x86_64-pc-windows-msvc" --profile minimal --no-self-update
+
+      - name: Restore Cargo registry and WebRTC cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            .work/webrtc
+          key: zed-math-win-${{ needs.plan.outputs.rust_toolchain }}-${{ hashFiles('patches/**') }}
+          restore-keys: |
+            zed-math-win-${{ needs.plan.outputs.rust_toolchain }}-
+            zed-math-win-
+
+      - name: Clone upstream Zed and prepare patched source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git clone --depth 1 --branch $env:ZED_TAG --single-branch https://github.com/zed-industries/zed.git .work\zed-upstream
+          $seedTag = (Get-Content -LiteralPath manifest.json -Raw | ConvertFrom-Json).windows_update.seed.tag
+          if ($env:ZED_TAG -ne $seedTag) {
+            git -C .work\zed-upstream fetch --depth 1 origin tag $seedTag
+          }
+          python build.py prepare --platform win32 --source .work\zed-upstream --tag $env:ZED_TAG --output-dir .work\prepared
+
+      - name: Prepare official WebRTC binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $webrtcDir = python build.py prepare-webrtc --source .work\zed-upstream --manifest .work\prepared\manifest.json --output-dir .work\webrtc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($webrtcDir) {
+            "LK_CUSTOM_WEBRTC=$webrtcDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Run native Markdown and Math tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $logPath = '.work\markdown-tests.log'
+          & .\build-windows.ps1 test -Source .work\zed-upstream -Manifest .work\prepared\manifest.json 2>&1 | Tee-Object -FilePath $logPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $content = Get-Content -LiteralPath $logPath -Raw
+          if ($content -notmatch 'test katex::tests::test_math_with_setext_lines_renders_to_svg \.\.\. ok' -or
+              $content -notmatch 'test result: ok\. \d+ passed; 0 failed;') {
+            throw 'Native math test verification evidence is missing.'
+          }
+
+      - name: Build lightweight Release GUI and CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\build-windows.ps1 build -Source .work\zed-upstream -Manifest .work\prepared\manifest.json -Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package, validate, and archive Windows release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\build-windows.ps1 package -Source .work\zed-upstream -Manifest .work\prepared\manifest.json -Destination dist\package -Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python build.py validate-package --manifest .work\prepared\manifest.json --destination dist\package
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python build.py archive --destination dist\package --archive-path "dist\${env:ASSET_NAME}"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipPath = "dist\${env:ASSET_NAME}"
+          $manifestPath = 'dist\package\native-math-manifest.json'
+          $patchPath = ".work\prepared\zed-${env:ZED_TAG}-native-math.patch"
+          $notes = @"
+          Prebuilt Windows x64 community release of **Zed Native Math** based on official Zed ``${env:ZED_TAG}`` (``${env:ZED_COMMIT}``).
+
+          - Built in CI with native Markdown + RaTeX math unit tests verified.
+          - Exact corresponding source patch and manifest are attached for GPL-3.0 compliance.
+          - Update locally with ``.\install-windows-updates.ps1 check`` (or automatically via the desktop shortcut).
+          "@
+          $exists = $false
+          gh release view $env:RELEASE_TAG 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { $exists = $true }
+          if ($exists) {
+            gh release upload $env:RELEASE_TAG $zipPath $manifestPath $patchPath --clobber
+            gh release edit $env:RELEASE_TAG --notes $notes
+          } else {
+            gh release create $env:RELEASE_TAG $zipPath $manifestPath $patchPath `
+              --title "Zed Native Math ${env:RELEASE_TAG}" `
+              --notes $notes
+          }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Follow official Zed stable releases while retaining the native math patch."""
+"""Lightweight Windows updater that installs prebuilt Zed Native Math releases."""
 
 import argparse
 from contextlib import contextmanager
@@ -13,17 +13,24 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 import zipfile
-
-from build_recipe import default_recipe
 
 
 ROOT = Path(__file__).resolve().parent
-REPOSITORY = "https://github.com/zed-industries/zed.git"
-RELEASE_API = "https://api.github.com/repos/zed-industries/zed/releases/latest"
-INTERVAL_SECONDS = 30 * 60
+DEFAULT_RELEASE_REPO = "KitaHare/zed-native-math"
+RELEASE_API_TEMPLATE = "https://api.github.com/repos/{repo}/releases/latest"
+INTERVAL_SECONDS = 6 * 60 * 60
+MAX_DATABASE_BACKUPS = 3
+WINDOWS_ASSET_SUFFIX = "-windows-x64.zip"
+REQUIRED_PACKAGE_FILES = (
+    "Zed.exe",
+    "bin/zed.exe",
+    "conpty.dll",
+    "OpenConsole.exe",
+    "native-math-manifest.json",
+)
 
 
 class UpdateError(RuntimeError):
@@ -35,9 +42,22 @@ def now():
 
 
 def version(tag):
-    if not isinstance(tag, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+    if not isinstance(tag, str):
+        raise UpdateError("Unexpected release tag: " + str(tag))
+    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-math\.(\d+))?", tag)
+    if not match:
         raise UpdateError("Unexpected stable release tag: " + str(tag))
-    return tuple(map(int, tag[1:].split(".")))
+    major, minor, patch, revision = match.groups()
+    return (int(major), int(minor), int(patch), int(revision or 0))
+
+
+def base_zed_tag(tag):
+    major, minor, patch, _ = version(tag)
+    return f"v{major}.{minor}.{patch}"
+
+
+def release_api_url(repo=DEFAULT_RELEASE_REPO):
+    return RELEASE_API_TEMPLATE.format(repo=repo)
 
 
 def read_json(path):
@@ -105,18 +125,6 @@ def run(command, cwd=None, environment=None, log=None, separate_stderr=False):
     return output.strip()
 
 
-def latest_release():
-    request = urllib.request.Request(RELEASE_API, headers={
-        "User-Agent": "Zed-Native-Math-Windows-Updater", "Accept": "application/vnd.github+json",
-    })
-    with open_url(request, timeout=30) as response:
-        data = json.load(response)
-    version(data.get("tag_name"))
-    if data.get("draft") or data.get("prerelease"):
-        raise UpdateError("The official endpoint did not return a stable release")
-    return data["tag_name"]
-
-
 def open_url(request, timeout):
     for attempt in range(3):
         try:
@@ -127,12 +135,35 @@ def open_url(request, timeout):
             time.sleep(3 * (attempt + 1))
 
 
-def rust_channel(source):
-    text = (source / "rust-toolchain.toml").read_text(encoding="utf-8")
-    match = re.search(r'^channel\s*=\s*"(\d+\.\d+\.\d+)"', text, re.MULTILINE)
-    if not match:
-        raise UpdateError("Cannot read the official pinned Rust toolchain")
-    return match.group(1)
+def latest_release(repo=DEFAULT_RELEASE_REPO):
+    api_url = release_api_url(repo)
+    request = urllib.request.Request(api_url, headers={
+        "User-Agent": "Zed-Native-Math-Windows-Updater",
+        "Accept": "application/vnd.github+json",
+    })
+    with open_url(request, timeout=30) as response:
+        data = json.load(response)
+    tag = data.get("tag_name")
+    version(tag)
+    if data.get("draft") or data.get("prerelease"):
+        raise UpdateError("The release endpoint did not return a stable release")
+    assets = data.get("assets") or []
+    expected_name = f"zed-native-math-{tag}{WINDOWS_ASSET_SUFFIX}"
+    asset = next((item for item in assets if item.get("name") == expected_name), None)
+    if asset is None:
+        asset = next((item for item in assets
+                      if isinstance(item.get("name"), str)
+                      and item["name"].endswith(WINDOWS_ASSET_SUFFIX)), None)
+    if asset is None:
+        raise UpdateError(f"Release {tag} does not include a Windows x64 package ({expected_name})")
+    download_url = asset.get("browser_download_url") or ""
+    if not download_url.startswith("https://"):
+        raise UpdateError(f"Release {tag} asset download URL must use HTTPS")
+    return {
+        "tag": tag,
+        "asset_name": asset["name"],
+        "download_url": download_url,
+    }
 
 
 def stable_is_running():
@@ -148,13 +179,61 @@ def stable_is_running():
                for item in processes)
 
 
+def directory_size(path):
+    if not path.exists():
+        return 0
+    if path.is_file():
+        return path.stat().st_size
+    total = 0
+    for root_dir, _, filenames in os.walk(path):
+        for filename in filenames:
+            try:
+                total += (Path(root_dir) / filename).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def extract_zip_safely(archive_path, destination):
+    destination.mkdir(parents=True, exist_ok=True)
+    resolved_root = destination.resolve()
+    with zipfile.ZipFile(archive_path) as bundle:
+        for member in bundle.infolist():
+            target = (destination / member.filename).resolve()
+            if not target.is_relative_to(resolved_root):
+                raise UpdateError("Release archive contains an invalid extraction path")
+        bundle.extractall(destination)
+    # Support archives wrapped in a single top-level directory as well as flat archives.
+    if not (destination / "Zed.exe").is_file():
+        entries = list(destination.iterdir())
+        if len(entries) == 1 and entries[0].is_dir() and (entries[0] / "Zed.exe").is_file():
+            nested = entries[0]
+            for child in list(nested.iterdir()):
+                shutil.move(str(child), str(destination / child.name))
+            nested.rmdir()
+
+
 class Updater:
     def __init__(self, root=ROOT):
         self.root = root
         self.work = root / ".work/windows-updates"
         self.state_path = self.work / "state.json"
-        self.repository = root / ".work/zed-upstream"
         self.log = self.work / "update.log"
+
+    def release_repository(self):
+        override = os.environ.get("ZED_NATIVE_MATH_RELEASE_REPO")
+        if override:
+            return override
+        if self.state_path.is_file():
+            repo = read_json(self.state_path).get("repository")
+            if repo:
+                return repo
+        manifest_path = self.root / "manifest.json"
+        if manifest_path.is_file():
+            repo = read_json(manifest_path).get("windows_update", {}).get("repository")
+            if repo:
+                return repo
+        return DEFAULT_RELEASE_REPO
 
     def state(self):
         if not self.state_path.is_file():
@@ -169,230 +248,121 @@ class Updater:
             return state
 
     def initialize(self):
+        repo = self.release_repository()
         if self.state_path.exists():
-            self.change(enabled=True)
+            with lock(self.work / "state.lock"):
+                state = self.state()
+                migrating_from_source = state.get("mode") != "release"
+                state["enabled"] = True
+                state["mode"] = "release"
+                state["repository"] = repo
+                state["check_interval_seconds"] = INTERVAL_SECONDS
+                if migrating_from_source:
+                    # Clear obsolete local patch-conflict errors when moving to cloud releases.
+                    state["failed_tag"] = None
+                    state["failure_detail"] = None
+                    state["last_error"] = None
+                    state["last_error_kind"] = None
+                    state["notified_failure"] = None
+                    if state.get("phase") == "failed":
+                        state["phase"] = "ready" if state.get("pending") else "installed"
+                atomic_json(self.state_path, state)
             return
-        package = self.root / "dist/Zed Native Math (Community)"
-        if not (package / "Zed.exe").is_file():
-            raise UpdateError("Build and package the initial community application first")
-        manifest = read_json(package / "native-math-manifest.json")
-        catalog = read_json(self.root / "manifest.json")
-        recipe = default_recipe(catalog, "win32")
-        # A user may have packaged the old Windows baseline before installing
-        # the updater. Bootstrap it as that release, never as the new seed.
-        if manifest["zed"] != recipe["zed"]:
-            if manifest["zed"] != catalog["zed"]:
-                raise UpdateError("Initial package does not match a supported Windows build revision")
-            recipe = catalog
-        recipe["patch"]["file"] = str((self.root / recipe["patch"]["file"]).resolve())
-        recipe_path = self.work / "initial-manifest.json"
-        atomic_json(recipe_path, recipe)
-        atomic_json(self.state_path, {
-            "enabled": True, "channel": "stable", "check_interval_seconds": INTERVAL_SECONDS,
-            "current": {"tag": manifest["zed"]["tag"], "commit": manifest["zed"]["commit"],
-                        "directory": str(package), "manifest": str(recipe_path)},
-            "previous": None, "pending": None, "phase": "installed", "last_checked": None,
-        })
 
-    def environment(self):
-        environment = os.environ.copy()
-        cargo = self.root / ".work/cargo"
-        if (cargo / "bin/rustup.exe").is_file():
-            environment["CARGO_HOME"] = str(cargo)
-            environment["RUSTUP_HOME"] = str(self.root / ".work/rustup")
-            environment["PATH"] = str(cargo / "bin") + os.pathsep + environment["PATH"]
-        environment["CARGO_TARGET_DIR"] = str(self.repository / "target")
-        environment["CARGO_INCREMENTAL"] = "0"
-        environment["CARGO_NET_GIT_FETCH_WITH_CLI"] = "true"
-        environment["CARGO_HTTP_MULTIPLEXING"] = "false"
-        environment.pop("CARGO_BUILD_TARGET", None)
-        environment.pop("RUSTUP_TOOLCHAIN", None)
-        return environment
+        package = self.root / "dist/Zed Native Math (Community)"
+        if (package / "Zed.exe").is_file() and (package / "native-math-manifest.json").is_file():
+            manifest = read_json(package / "native-math-manifest.json")
+            zed_info = manifest.get("zed") or {}
+            version(zed_info.get("tag"))
+            commit = zed_info.get("commit")
+            if not isinstance(commit, str) or len(commit) < 7:
+                raise UpdateError("Initial package manifest is missing the Zed commit")
+            current = {
+                "tag": zed_info["tag"],
+                "zed_tag": zed_info["tag"],
+                "commit": commit,
+                "directory": str(package),
+                "manifest": str(package / "native-math-manifest.json"),
+            }
+        else:
+            release_info = latest_release(repo)
+            current = self.download_candidate(release_info)
+
+        atomic_json(self.state_path, {
+            "enabled": True,
+            "mode": "release",
+            "channel": "stable",
+            "repository": repo,
+            "check_interval_seconds": INTERVAL_SECONDS,
+            "current": current,
+            "previous": None,
+            "pending": None,
+            "phase": "installed",
+            "last_checked": now(),
+        })
 
     def command(self, command, cwd=None, environment=None):
         return run(command, cwd, environment, self.log)
 
-    def ensure_toolchain(self, channel, environment):
-        target = channel + "-x86_64-pc-windows-msvc"
-        installed = self.command(["rustup", "toolchain", "list"], environment=environment)
-        if not any(line.split()[:1] == [target] for line in installed.splitlines()):
-            self.command(["rustup", "toolchain", "install", target, "--profile", "minimal", "--no-self-update"],
-                         environment=environment)
-
-    def build_action(self, action, source, manifest, environment, destination=None):
-        command = ["powershell.exe", "-NoProfile", "-File", self.root / "build-windows.ps1",
-                   action, "-Source", source, "-Manifest", manifest]
-        if destination:
-            command.extend(["-Destination", destination])
-        return self.command(command, environment=environment)
-
-    def prepare(self, tag, state):
-        recipe = read_json(Path(state["current"]["manifest"]))
-        baseline_patch = Path(recipe["patch"]["file"])
-        seed = read_json(self.root / "manifest.json").get("windows_update", {}).get("seed")
-        use_seed = seed and version(recipe["zed"]["tag"]) < version(seed["tag"]) <= version(tag)
-        exact_seed = use_seed and tag == seed["tag"]
-        if use_seed:
-            baseline_patch = self.root / seed["patch"]
-        if not self.repository.exists():
-            self.command(["git", "clone", "--depth", "1", "--branch", recipe["zed"]["tag"],
-                          "--single-branch", REPOSITORY, self.repository])
-        remote = self.command(["git", "remote", "get-url", "origin"], self.repository)
-        if remote != REPOSITORY:
-            raise UpdateError("Update checkout origin must be " + REPOSITORY)
-        if use_seed:
-            self.command(["git", "fetch", "--depth", "1", "origin", "tag", seed["tag"]], self.repository)
-            seed_commit = self.command(["git", "rev-parse", "refs/tags/" + seed["tag"] + "^{commit}"], self.repository)
-            if seed_commit != seed["commit"]:
-                raise UpdateError("The maintained update patch base does not match its official tag")
-        self.command(["git", "fetch", "--depth", "1", "origin", "tag", tag], self.repository)
-        commit = self.command(["git", "rev-parse", "refs/tags/" + tag + "^{commit}"], self.repository)
-        # A maintained rebase is a different input from the patch that conflicted.
-        # Keep its checkout and evidence separate; never discard a manual resolution.
-        build_id = f"{tag}-from-{seed['tag']}" if use_seed else tag
-        source = self.root / ".work/update-sources" / build_id
-        candidate = self.work / "candidates" / build_id
-        manifest_path = candidate / "manifest.json"
-        preparation_path = candidate / "preparation.json"
-        if manifest_path.is_file():
-            existing = read_json(manifest_path)
-            if existing["zed"] != {"tag": tag, "commit": commit}:
-                raise UpdateError("Prepared candidate does not match the official tag")
-            self.build_action("verify", source, manifest_path, self.environment())
-            return source, manifest_path
-        if preparation_path.is_file():
-            preparation = read_json(preparation_path)
-            if preparation != {"commit": commit, "patch": str(baseline_patch)}:
-                raise UpdateError("Prepared source belongs to a different update")
-            if self.command(["git", "rev-parse", "HEAD"], source) != commit:
-                raise UpdateError("Prepared source revision changed")
-        else:
-            if source.exists():
-                raise UpdateError("Incomplete candidate checkout retained at " + str(source)
-                                  + "; inspect/resolve its patch before retrying")
-            source.parent.mkdir(parents=True, exist_ok=True)
-            self.command(["git", "worktree", "add", "--detach", source, commit], self.repository)
-            if exact_seed:
-                self.command(["git", "apply", "--index", baseline_patch], source)
-            else:
-                # A different upstream version must keep its own dependency choices.
-                self.command(["git", "apply", "--3way", "--index", "--exclude=Cargo.lock", baseline_patch], source)
-            atomic_json(preparation_path, {"commit": commit, "patch": str(baseline_patch)})
-        environment = self.environment()
-        channel = rust_channel(source)
-        self.ensure_toolchain(channel, environment)
-        environment["RUSTUP_TOOLCHAIN"] = channel
-        if not exact_seed:
-            self.command(["cargo", "update", "--workspace"], source, environment)
-        candidate.mkdir(parents=True, exist_ok=True)
-        patch = candidate / "native-math.patch"
-        # Binary-safe output; Git object IDs are not custom file-integrity checks.
-        diff = subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=source,
-                                       creationflags=subprocess.CREATE_NO_WINDOW)
-        patch.write_bytes(diff)
-        recipe["zed"] = {"tag": tag, "commit": commit}
-        recipe["patch"] = {"file": str(patch)}
-        recipe["rust_toolchain"] = channel
-        recipe.pop("verification", None)
-        recipe["tested_platforms"] = ["Windows x64"]
-        recipe["windows_verification"] = {"status": "building"}
-        recipe["automatic_updater_included"] = True
-        atomic_json(manifest_path, recipe)
-        return source, manifest_path
-
     def validate_package(self, directory, recipe):
+        missing = [item for item in REQUIRED_PACKAGE_FILES if not (directory / item).is_file()]
+        if missing:
+            raise UpdateError("Downloaded package is missing required files: " + ", ".join(missing))
         output = self.command([directory / "Zed.exe", "--help"])
         if "PATHS_OR_URLS" not in output:
             raise UpdateError("Packaged GUI command entry did not start correctly")
         output = self.command([directory / "bin/zed.exe", "--version"])
-        if ("Zed " + recipe["zed"]["tag"][1:] + " " not in output
+        expected_version = recipe["zed"]["tag"].removeprefix("v")
+        if ("Zed " + expected_version + " " not in output
                 or recipe["zed"]["commit"] not in output
                 or str(directory).lower() not in output.lower()):
             raise UpdateError("Packaged CLI does not resolve the expected GUI: " + output)
 
-    def prepare_webrtc(self, source, environment):
-        if environment.get("LK_CUSTOM_WEBRTC"):
-            return
-        metadata = json.loads(run(["cargo", "metadata", "--locked", "--format-version", "1",
-                                   "--filter-platform", "x86_64-pc-windows-msvc"], source, environment,
-                                  separate_stderr=True))
-        package = next((item for item in metadata["packages"] if item["name"] == "webrtc-sys-build"), None)
-        if package is None:
-            return
-        helper = Path(package["manifest_path"]).parent / "src/lib.rs"
-        match = re.search(r'pub const WEBRTC_TAG: &str = "(webrtc-[a-f0-9]+-\d+)"',
-                          helper.read_text(encoding="utf-8"))
-        if not match:
-            raise UpdateError("The official WebRTC build helper changed; review its download contract")
-        tag = match.group(1)
-        cache = self.work / "webrtc" / tag
-        directory = cache / "win-x64-release"
-        ready = cache / "ready.json"
-        if not (ready.is_file() and (directory / "lib/webrtc.lib").is_file()
-                and (directory / "include/api/peer_connection_interface.h").is_file()):
-            cache.mkdir(parents=True, exist_ok=True)
-            archive = cache / "webrtc-win-x64-release.zip"
-            url = ("https://github.com/zed-industries/livekit-rust-sdks/releases/download/"
-                   + tag + "/webrtc-win-x64-release.zip")
-            self.change(phase="downloading-webrtc")
+    def download_candidate(self, release_info):
+        tag = release_info["tag"]
+        url = release_info["download_url"]
+        downloads = self.work / "downloads"
+        downloads.mkdir(parents=True, exist_ok=True)
+        archive = downloads / f"{tag}-{time.time_ns()}.zip"
+        directory = self.root / "dist/windows-versions" / f"{tag}-{time.time_ns()}"
+        request = urllib.request.Request(url, headers={
+            "User-Agent": "Zed-Native-Math-Windows-Updater",
+            "Accept": "application/octet-stream",
+        })
+        try:
             with self.log.open("a", encoding="utf-8") as log:
-                log.write("\nDownloading official WebRTC with system Python TLS: " + url + "\n")
-            with open_url(url, timeout=90) as response, archive.open("wb") as output:
+                log.write(f"\n[{now()}] Downloading release {tag}: {url}\n")
+            with open_url(request, timeout=180) as response, archive.open("wb") as output:
                 shutil.copyfileobj(response, output)
-            with zipfile.ZipFile(archive) as bundle:
-                for member in bundle.infolist():
-                    if not (cache / member.filename).resolve().is_relative_to(cache.resolve()):
-                        raise UpdateError("WebRTC archive contains an invalid extraction path")
-                bundle.extractall(cache)
-            if not (directory / "lib/webrtc.lib").is_file():
-                raise UpdateError("The official WebRTC archive layout changed")
-            atomic_json(ready, {"tag": tag, "source": url})
-        # Supported upstream override; keeps the TLS-valid download cached across builds.
-        environment["LK_CUSTOM_WEBRTC"] = str(directory)
-
-    def build_candidate(self, tag, state):
-        source, manifest_path = self.prepare(tag, state)
-        environment = self.environment()
-        self.change(phase="testing", building_tag=tag)
-        passed = self.native_tests(source, manifest_path, environment)
-        environment["RUSTUP_TOOLCHAIN"] = read_json(manifest_path)["rust_toolchain"]
-        self.prepare_webrtc(source, environment)
-        self.change(phase="building")
-        self.build_action("build", source, manifest_path, environment)
-        recipe = read_json(manifest_path)
-        recipe["windows_verification"] = {
-            "native_markdown_tests_passed": passed, "math_svg_decode_test_passed": True,
-            "native_application_build_status": "passed-debug-gui-and-cli",
-            "application_package_status": "passed-version-smoke",
-        }
-        atomic_json(manifest_path, recipe)
-        directory = self.root / "dist/windows-versions" / (tag + "-" + str(time.time_ns()))
-        self.change(phase="packaging")
-        self.build_action("package", source, manifest_path, environment, directory)
-        self.validate_package(directory, recipe)
-        return {"tag": tag, "commit": recipe["zed"]["commit"],
-                "directory": str(directory), "manifest": str(manifest_path)}
-
-    def native_tests(self, source, manifest_path, environment):
-        recipe = read_json(manifest_path)
-        evidence_path = manifest_path.parent / "native-tests.json"
-        tested_patch = manifest_path.parent / "native-tests.patch"
-        patch = Path(recipe["patch"]["file"]).read_bytes()
-        identity = {"zed": recipe["zed"], "toolchain": recipe["rust_toolchain"]}
-        if evidence_path.is_file() and tested_patch.is_file() and tested_patch.read_bytes() == patch:
-            evidence = read_json(evidence_path)
-            actual = subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=source,
-                                             creationflags=subprocess.CREATE_NO_WINDOW)
-            if evidence.get("identity") == identity and actual == patch:
-                return evidence["passed"]
-        tests = self.build_action("test", source, manifest_path, environment)
-        match = re.search(r"test result: ok\. (\d+) passed; 0 failed;", tests)
-        if not match or "test katex::tests::test_math_with_setext_lines_renders_to_svg ... ok" not in tests:
-            raise UpdateError("Native math/Markdown test evidence is missing")
-        passed = int(match.group(1))
-        tested_patch.write_bytes(patch)
-        atomic_json(evidence_path, {"identity": identity, "passed": passed, "tested_at": now()})
-        return passed
+            extract_zip_safely(archive, directory)
+            manifest_path = directory / "native-math-manifest.json"
+            if not manifest_path.is_file():
+                raise UpdateError("Downloaded release is missing native-math-manifest.json")
+            recipe = read_json(manifest_path)
+            zed_info = recipe.get("zed") or {}
+            expected_zed_tag = base_zed_tag(tag)
+            if zed_info.get("tag") != expected_zed_tag:
+                raise UpdateError(
+                    f"Release {tag} manifest mismatch: expected {expected_zed_tag}, got {zed_info.get('tag')}"
+                )
+            commit = zed_info.get("commit")
+            if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+                raise UpdateError(f"Release {tag} manifest has an invalid Zed commit")
+            self.validate_package(directory, recipe)
+            return {
+                "tag": tag,
+                "zed_tag": zed_info["tag"],
+                "commit": commit,
+                "directory": str(directory),
+                "manifest": str(manifest_path),
+            }
+        except Exception:
+            if directory.exists():
+                shutil.rmtree(directory, ignore_errors=True)
+            raise
+        finally:
+            if archive.exists():
+                archive.unlink()
 
     def sync(self, force=False):
         with lock(self.work / "update.lock", blocking=False) as acquired:
@@ -401,12 +371,15 @@ class Updater:
             state = self.state()
             if not state["enabled"]:
                 return "disabled"
+            interval = state.get("check_interval_seconds", INTERVAL_SECONDS)
             checked = state.get("last_checked")
-            if not force and checked and time.time() - datetime.fromisoformat(checked).timestamp() < INTERVAL_SECONDS:
+            if not force and checked and time.time() - datetime.fromisoformat(checked).timestamp() < interval:
                 return "not-due"
+            repo = self.release_repository()
             tag = None
             try:
-                tag = latest_release()
+                release_info = latest_release(repo)
+                tag = release_info["tag"]
                 self.change(last_checked=now(), latest_tag=tag, last_error=None, last_error_kind=None)
                 installed = state.get("pending") or state["current"]
                 if version(tag) <= version(installed["tag"]):
@@ -415,14 +388,14 @@ class Updater:
                 if state.get("held_tag") == tag:
                     self.change(phase="rolled-back")
                     return "held-after-rollback"
-                # Do not retry an unchanged patch/compiler failure every 30 minutes.
                 if state.get("failed_tag") == tag and not force:
                     self.change(phase="failed", last_error=state.get("failure_detail"), last_error_kind="update")
                     return "failed-awaiting-retry"
-                self.change(phase="preparing", building_tag=tag, failed_tag=None, failure_detail=None)
-                candidate = self.build_candidate(tag, state)
-                self.change(pending=candidate, phase="ready", building_tag=None,
+                self.change(phase="downloading", downloading_tag=tag, failed_tag=None, failure_detail=None)
+                candidate = self.download_candidate(release_info)
+                self.change(pending=candidate, phase="ready", downloading_tag=None,
                             failed_tag=None, failure_detail=None, last_error=None, ready_at=now())
+                self.prune_unused(self.state())
                 return "ready"
             except Exception as error:
                 retry_network = isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError))
@@ -430,15 +403,99 @@ class Updater:
                 detail = str(error)
                 kind = "network" if retry_network else "update"
                 fields = dict(phase="failed", last_checked=checked_at, last_error=detail,
-                              last_error_kind=kind, building_tag=None)
-                # An interrupted release check must not forget a failed candidate.
+                              last_error_kind=kind, downloading_tag=None)
                 if not retry_network:
                     fields.update(failed_tag=tag, failure_detail=detail)
                 self.change(**fields)
-                stage = f"updating {tag}" if tag else f"checking {RELEASE_API}"
+                stage = f"downloading {tag}" if tag else f"checking {release_api_url(repo)}"
                 with self.log.open("a", encoding="utf-8") as log:
                     log.write(f"\n[{checked_at}] {kind} error while {stage}: {detail}\n")
                 return "failed"
+
+    def active_directories(self, state):
+        kept = set()
+        for slot in ("current", "previous", "pending"):
+            entry = state.get(slot)
+            if entry and entry.get("directory"):
+                kept.add(Path(entry["directory"]).resolve())
+        return kept
+
+    def prune_unused(self, state):
+        removed = []
+        freed_bytes = 0
+        kept = self.active_directories(state)
+        versions_dir = self.root / "dist/windows-versions"
+        if versions_dir.is_dir():
+            for child in versions_dir.iterdir():
+                if child.is_dir() and child.resolve() not in kept:
+                    freed_bytes += directory_size(child)
+                    shutil.rmtree(child, ignore_errors=True)
+                    removed.append(str(child))
+        backups_dir = self.work / "database-backups"
+        if backups_dir.is_dir():
+            protected_backup = (
+                Path(state["last_database_backup"]).resolve()
+                if state.get("last_database_backup")
+                else None
+            )
+            snapshots = sorted(
+                (p for p in backups_dir.iterdir() if p.is_dir()),
+                key=lambda p: (int(p.name) if p.name.isdigit() else -1, p.stat().st_mtime, p.name),
+            )
+            for stale in snapshots[:-MAX_DATABASE_BACKUPS]:
+                if protected_backup and stale.resolve() == protected_backup:
+                    continue
+                freed_bytes += directory_size(stale)
+                shutil.rmtree(stale, ignore_errors=True)
+                removed.append(str(stale))
+        return {"removed": removed, "freed_bytes": freed_bytes}
+
+    def cleanup_legacy_build_caches(self, dry_run=False):
+        """Remove obsolete local source-build caches without touching active releases."""
+        state = self.state() if self.state_path.is_file() else {}
+        kept = self.active_directories(state)
+        targets = [
+            self.root / ".work/zed-upstream",
+            self.root / ".work/update-sources",
+            self.root / ".work/cargo",
+            self.root / ".work/rustup",
+            self.root / ".work/tools",
+            self.root / ".work/smoke-data",
+            self.work / "webrtc",
+            self.work / "candidates",
+            self.work / "downloads",
+        ]
+        work_root = self.root / ".work"
+        if work_root.is_dir():
+            targets.extend(sorted(work_root.glob("smoke-update-*")))
+        if self.work.is_dir():
+            targets.extend(sorted(self.work.glob("acp-*")))
+        legacy_dist = self.root / "dist/Zed Native Math (Community)"
+        if legacy_dist.is_dir() and legacy_dist.resolve() not in kept:
+            targets.append(legacy_dist)
+        versions_dir = self.root / "dist/windows-versions"
+        if versions_dir.is_dir():
+            for child in sorted(versions_dir.iterdir()):
+                if child.is_dir() and child.resolve() not in kept:
+                    targets.append(child)
+
+        removed = []
+        freed_bytes = 0
+        seen = set()
+        for target in targets:
+            resolved = target.resolve()
+            if resolved in seen or resolved in kept or not target.exists():
+                continue
+            seen.add(resolved)
+            size = directory_size(target)
+            freed_bytes += size
+            removed.append({"path": str(target), "bytes": size})
+            if not dry_run:
+                if target.is_dir():
+                    shutil.rmtree(target, ignore_errors=True)
+                else:
+                    target.unlink(missing_ok=True)
+        return {"dry_run": dry_run, "freed_bytes": freed_bytes, "items": removed}
 
     def promote(self, running):
         with lock(self.work / "state.lock"):
@@ -449,9 +506,10 @@ class Updater:
                 state["current"] = state.pop("pending")
                 state["pending"] = None
                 state["activated_at"] = now()
-                if not state.get("building_tag"):
+                if not state.get("downloading_tag"):
                     state["phase"] = "up-to-date"
                 atomic_json(self.state_path, state)
+                self.prune_unused(state)
             return state
 
     def backup_database(self):
@@ -496,16 +554,21 @@ class Updater:
                 and state.get("notified_failure") != failure_key):
             self.change(notified_failure=failure_key)
             import ctypes
-            ctypes.windll.user32.MessageBoxW(None,
-                "官方更新未完成，继续使用现有数学版。\n\n"
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                "云端预编译更新未完成，继续使用现有数学版。\n\n"
                 + str(state["last_error"])[-1200:] + "\n\n日志：" + str(self.log),
-                "Zed Native Math 更新未完成", 0x30)
+                "Zed Native Math 更新未完成", 0x30,
+            )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["initialize", "sync", "launch", "status", "rollback", "disable"])
+    parser.add_argument("action", choices=[
+        "initialize", "sync", "launch", "status", "rollback", "disable", "cleanup",
+    ])
     parser.add_argument("--force", action="store_true", help="check now and retry a failed candidate")
+    parser.add_argument("--dry-run", action="store_true", help="preview paths without deleting (cleanup)")
     arguments, forwarded = parser.parse_known_args()
     if os.name != "nt":
         parser.error("This updater runs on Windows only")
@@ -525,6 +588,9 @@ def main():
             updater.change(enabled=False)
         elif arguments.action == "rollback":
             updater.rollback(stable_is_running())
+        elif arguments.action == "cleanup":
+            report = updater.cleanup_legacy_build_caches(dry_run=arguments.dry_run)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
     except Exception as error:
         if sys.stderr:

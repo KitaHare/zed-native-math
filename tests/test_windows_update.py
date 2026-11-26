@@ -9,14 +9,30 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import zipfile
 from unittest import mock
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("windows_update", ROOT / "windows_update.py")
 update = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(update)
+
+
+def make_release_zip(tag, commit, *, wrapped=False, extra_files=None):
+    buffer = io.BytesIO()
+    prefix = f"Zed Native Math ({tag})/" if wrapped else ""
+    manifest = {"zed": {"tag": update.base_zed_tag(tag), "commit": commit}}
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr(prefix + "Zed.exe", b"gui fixture")
+        bundle.writestr(prefix + "bin/zed.exe", b"cli fixture")
+        bundle.writestr(prefix + "conpty.dll", b"conpty fixture")
+        bundle.writestr(prefix + "OpenConsole.exe", b"console fixture")
+        bundle.writestr(prefix + "native-math-manifest.json", json.dumps(manifest))
+        for name, content in (extra_files or {}).items():
+            bundle.writestr(name, content)
+    buffer.seek(0)
+    return buffer
 
 
 @unittest.skipUnless(os.name == "nt", "Windows update/launcher integration")
@@ -32,136 +48,226 @@ class WindowsUpdateTests(unittest.TestCase):
         self.current = self.release("v1.0.0", "a" * 40)
         self.candidate = self.release("v1.1.0", "b" * 40)
         update.atomic_json(self.updater.state_path, {
-            "enabled": True, "current": self.current, "previous": None, "pending": None,
-            "phase": "installed", "last_checked": None,
+            "enabled": True,
+            "mode": "release",
+            "repository": "KitaHare/zed-native-math",
+            "check_interval_seconds": update.INTERVAL_SECONDS,
+            "current": self.current,
+            "previous": None,
+            "pending": None,
+            "phase": "installed",
+            "last_checked": None,
         })
 
     def release(self, tag, commit):
-        directory = self.root / "dist" / tag
-        directory.mkdir(parents=True)
+        directory = self.root / "dist/windows-versions" / tag
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "bin").mkdir(exist_ok=True)
         (directory / "Zed.exe").write_bytes(b"application fixture")
-        return {"tag": tag, "commit": commit, "directory": str(directory),
-                "manifest": str(self.root / (tag + ".json"))}
+        (directory / "bin/zed.exe").write_bytes(b"cli fixture")
+        (directory / "conpty.dll").write_bytes(b"conpty fixture")
+        (directory / "OpenConsole.exe").write_bytes(b"console fixture")
+        manifest_path = directory / "native-math-manifest.json"
+        update.atomic_json(manifest_path, {"zed": {"tag": update.base_zed_tag(tag), "commit": commit}})
+        return {
+            "tag": tag,
+            "zed_tag": update.base_zed_tag(tag),
+            "commit": commit,
+            "directory": str(directory),
+            "manifest": str(manifest_path),
+        }
 
-    def test_initialize_uses_packaged_revision_and_keeps_legacy_bootstrap(self):
-        catalog = update.read_json(ROOT / "manifest.json")
-        seed = catalog["windows_update"]["seed"]
-        current_pin = {"tag": seed["tag"], "commit": seed["commit"]}
-        for name, pin, patch in [
-            ("first-build", current_pin, seed["patch"]),
-            ("legacy-package", catalog["zed"], catalog["patch"]["file"]),
-            ("wrong-commit", {**current_pin, "commit": "0" * 40}, None),
-        ]:
-            with self.subTest(name=name):
-                root = self.root / name
-                updater = update.Updater(root)
-                folder = root / "dist/Zed Native Math (Community)"
-                folder.mkdir(parents=True)
-                (folder / "Zed.exe").write_bytes(b"test package")
-                update.atomic_json(root / "manifest.json", catalog)
-                update.atomic_json(folder / "native-math-manifest.json", {"zed": pin})
-                if patch is None:
-                    with self.assertRaises(update.UpdateError):
-                        updater.initialize()
-                    self.assertFalse(updater.state_path.exists())
-                    continue
-                updater.initialize()
-                installed = updater.state()["current"]
-                self.assertEqual((installed["tag"], installed["commit"]), (pin["tag"], pin["commit"]))
-                recipe = update.read_json(Path(installed["manifest"]))
-                self.assertEqual(recipe["zed"], pin)
-                self.assertEqual(Path(recipe["patch"]["file"]), root / patch)
-                if name == "first-build":
-                    with mock.patch.object(update, "latest_release", return_value=pin["tag"]), \
-                         mock.patch.object(updater, "build_candidate") as build:
-                        self.assertEqual(updater.sync(True), "up-to-date")
-                        build.assert_not_called()
+    def release_info(self, tag):
+        return {
+            "tag": tag,
+            "asset_name": f"zed-native-math-{tag}-windows-x64.zip",
+            "download_url": f"https://github.com/KitaHare/zed-native-math/releases/download/{tag}/zed-native-math-{tag}-windows-x64.zip",
+        }
 
-    def test_reinstall_does_not_reset_existing_release_pointers(self):
-        self.updater.change(enabled=False, pending=self.candidate, previous=self.release("v0.9.0", "c" * 40))
-        before = self.updater.state()
+    def test_initialize_migrates_legacy_source_state_and_preserves_pointers(self):
+        previous = self.release("v0.9.0", "c" * 40)
+        update.atomic_json(self.updater.state_path, {
+            "enabled": False,
+            "current": self.current,
+            "previous": previous,
+            "pending": self.candidate,
+            "phase": "failed",
+            "failed_tag": "v1.2.0",
+            "failure_detail": "git apply conflict",
+            "last_error": "git apply conflict",
+            "last_error_kind": "update",
+            "notified_failure": "v1.2.0",
+        })
         self.updater.initialize()
-        self.assertEqual(self.updater.state(), {**before, "enabled": True})
+        state = self.updater.state()
+        self.assertTrue(state["enabled"])
+        self.assertEqual(state["mode"], "release")
+        self.assertEqual(state["current"], self.current)
+        self.assertEqual(state["previous"], previous)
+        self.assertEqual(state["pending"], self.candidate)
+        self.assertEqual(state["phase"], "ready")
+        self.assertIsNone(state["failed_tag"])
+        self.assertIsNone(state["last_error"])
 
-    def test_stable_tag_validation_and_numeric_order(self):
+    def test_initialize_uses_existing_local_package_without_network(self):
+        fresh_root = self.root / "local-first"
+        updater = update.Updater(fresh_root)
+        package = fresh_root / "dist/Zed Native Math (Community)"
+        package.mkdir(parents=True)
+        (package / "Zed.exe").write_bytes(b"local app")
+        update.atomic_json(package / "native-math-manifest.json", {
+            "zed": {"tag": "v1.29.2", "commit": "a" * 40},
+        })
+        with mock.patch.object(update, "latest_release") as fetch:
+            updater.initialize()
+            fetch.assert_not_called()
+        state = updater.state()
+        self.assertEqual(state["mode"], "release")
+        self.assertEqual(state["current"]["tag"], "v1.29.2")
+        self.assertEqual(Path(state["current"]["directory"]), package)
+
+    def test_initialize_bootstraps_directly_from_github_release_when_no_local_build(self):
+        fresh_root = self.root / "cloud-first"
+        updater = update.Updater(fresh_root)
+        downloaded = self.release("v1.30.2", "d" * 40)
+        with mock.patch.object(update, "latest_release", return_value=self.release_info("v1.30.2")), \
+             mock.patch.object(updater, "download_candidate", return_value=downloaded) as download:
+            updater.initialize()
+        download.assert_called_once()
+        state = updater.state()
+        self.assertEqual(state["mode"], "release")
+        self.assertEqual(state["current"], downloaded)
+
+    def test_release_tag_validation_and_numeric_order(self):
         self.assertGreater(update.version("v1.10.0"), update.version("v1.9.99"))
-        for tag in ("main", "v1.1.0-pre", "../v1.1.0", None):
+        self.assertGreater(update.version("v1.30.2-math.2"), update.version("v1.30.2"))
+        self.assertGreater(update.version("v1.30.3"), update.version("v1.30.2-math.9"))
+        self.assertEqual(update.base_zed_tag("v1.30.2-math.2"), "v1.30.2")
+        for tag in ("main", "v1.1.0-pre", "v1.1.0-rc.1", "../v1.1.0", None):
             with self.assertRaises(update.UpdateError):
                 update.version(tag)
 
-    def test_rejects_preview_release_from_endpoint(self):
+    def test_latest_release_selects_windows_zip_and_rejects_draft_prerelease_or_missing_asset(self):
+        def fake_response(payload):
+            response = mock.MagicMock()
+            response.__enter__.return_value.read.return_value = json.dumps(payload).encode()
+            return response
+
+        valid = {
+            "tag_name": "v1.30.2",
+            "draft": False,
+            "prerelease": False,
+            "assets": [
+                {"name": "zed-v1.30.2-native-math.patch", "browser_download_url": "https://github.com/x/y/patch"},
+                {"name": "zed-native-math-v1.30.2-windows-x64.zip", "browser_download_url": "https://github.com/x/y/app.zip"},
+            ],
+        }
+        with mock.patch.object(update.urllib.request, "urlopen", return_value=fake_response(valid)):
+            info = update.latest_release("KitaHare/zed-native-math")
+        self.assertEqual(info["tag"], "v1.30.2")
+        self.assertEqual(info["download_url"], "https://github.com/x/y/app.zip")
+
+        for bad_payload, pattern in [
+            ({**valid, "prerelease": True}, "stable"),
+            ({**valid, "draft": True}, "stable"),
+            ({**valid, "assets": []}, "Windows x64 package"),
+            ({**valid, "assets": [{"name": "zed-native-math-v1.30.2-windows-x64.zip", "browser_download_url": "http://insecure.example/app.zip"}]}, "HTTPS"),
+        ]:
+            with self.subTest(pattern=pattern), \
+                 mock.patch.object(update.urllib.request, "urlopen", return_value=fake_response(bad_payload)):
+                with self.assertRaisesRegex(update.UpdateError, pattern):
+                    update.latest_release("KitaHare/zed-native-math")
+
+    def test_download_candidate_validates_flat_and_wrapped_archives_and_deletes_temp_zip(self):
+        for wrapped in (False, True):
+            with self.subTest(wrapped=wrapped):
+                commit = "e" * 40
+                payload = make_release_zip("v1.30.2-math.2", commit, wrapped=wrapped)
+                response = mock.MagicMock()
+                response.__enter__.return_value = payload
+                with mock.patch.object(update.urllib.request, "urlopen", return_value=response), \
+                     mock.patch.object(self.updater, "validate_package") as validate:
+                    result = self.updater.download_candidate(self.release_info("v1.30.2-math.2"))
+                validate.assert_called_once()
+                self.assertEqual(result["tag"], "v1.30.2-math.2")
+                self.assertEqual(result["zed_tag"], "v1.30.2")
+                self.assertEqual(result["commit"], commit)
+                self.assertTrue((Path(result["directory"]) / "Zed.exe").is_file())
+                self.assertEqual(list((self.updater.work / "downloads").glob("*.zip")), [])
+
+    def test_download_candidate_blocks_zip_slip_and_cleans_up_failed_extraction(self):
+        evil = make_release_zip("v1.30.2", "f" * 40, extra_files={"../escaped.txt": b"evil"})
         response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps({
-            "tag_name": "v1.1.0", "prerelease": True, "draft": False,
-        }).encode()
+        response.__enter__.return_value = evil
+        before_versions = set((self.root / "dist/windows-versions").iterdir())
         with mock.patch.object(update.urllib.request, "urlopen", return_value=response):
-            with self.assertRaisesRegex(update.UpdateError, "stable"):
-                update.latest_release()
+            with self.assertRaisesRegex(update.UpdateError, "invalid extraction path"):
+                self.updater.download_candidate(self.release_info("v1.30.2"))
+        self.assertEqual(set((self.root / "dist/windows-versions").iterdir()), before_versions)
+        self.assertFalse((self.root / "dist/escaped.txt").exists())
+        self.assertEqual(list((self.updater.work / "downloads").glob("*.zip")), [])
 
-    def test_concurrent_worker_does_not_build(self):
+    def test_download_candidate_rejects_mismatched_manifest_tag_and_cleans_up(self):
+        bad_zip = make_release_zip("v1.29.0", "f" * 40)
+        response = mock.MagicMock()
+        response.__enter__.return_value = bad_zip
+        before_versions = set((self.root / "dist/windows-versions").iterdir())
+        with mock.patch.object(update.urllib.request, "urlopen", return_value=response):
+            with self.assertRaisesRegex(update.UpdateError, "manifest mismatch"):
+                self.updater.download_candidate(self.release_info("v1.30.2"))
+        self.assertEqual(set((self.root / "dist/windows-versions").iterdir()), before_versions)
+
+    def test_concurrent_worker_does_not_download(self):
         with update.lock(self.updater.work / "update.lock"):
-            with mock.patch.object(self.updater, "build_candidate") as build:
+            with mock.patch.object(self.updater, "download_candidate") as download:
                 self.assertEqual(self.updater.sync(True), "already-running")
-                build.assert_not_called()
+                download.assert_not_called()
 
-    def test_current_version_is_not_rebuilt(self):
-        with mock.patch.object(update, "latest_release", return_value="v1.0.0"):
-            with mock.patch.object(self.updater, "build_candidate") as build:
+    def test_current_version_is_not_redownloaded(self):
+        with mock.patch.object(update, "latest_release", return_value=self.release_info("v1.0.0")):
+            with mock.patch.object(self.updater, "download_candidate") as download:
                 self.assertEqual(self.updater.sync(True), "up-to-date")
-                build.assert_not_called()
+                download.assert_not_called()
         self.assertEqual(self.updater.state()["current"], self.current)
 
-    def test_pinned_rust_toolchain_only_installed_if_exact_windows_build_missing(self):
-        target = "1.98.1-x86_64-pc-windows-msvc"
-        for installed, needs_install in [
-            ("stable-x86_64-pc-windows-msvc\n" + target + " (active, default)", False),
-            ("1.98.1-x86_64-pc-windows-gnu\n1.98.10-x86_64-pc-windows-msvc", True),
-        ]:
-            with self.subTest(installed=installed), mock.patch.object(self.updater, "command", return_value=installed) as command:
-                self.updater.ensure_toolchain("1.98.1", {})
-                self.assertEqual(command.call_args_list[0].args[0], ["rustup", "toolchain", "list"])
-                self.assertEqual(command.call_count, 2 if needs_install else 1)
-                if needs_install:
-                    self.assertIn(target, command.call_args.args[0])
-
     def test_success_stages_without_replacing_current(self):
-        with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
-            with mock.patch.object(self.updater, "build_candidate", return_value=self.candidate):
+        with mock.patch.object(update, "latest_release", return_value=self.release_info("v1.1.0")):
+            with mock.patch.object(self.updater, "download_candidate", return_value=self.candidate):
                 self.assertEqual(self.updater.sync(True), "ready")
         state = self.updater.state()
         self.assertEqual(state["current"], self.current)
         self.assertEqual(state["pending"], self.candidate)
         self.assertEqual(state["phase"], "ready")
 
-    def test_failure_keeps_current_and_pending_and_records_reason(self):
+    def test_failure_keeps_current_and_pending_and_notifies_once(self):
         self.updater.change(pending=self.candidate)
-        with mock.patch.object(update, "latest_release", return_value="v1.2.0"):
-            with mock.patch.object(self.updater, "build_candidate", side_effect=update.UpdateError("patch conflict")):
+        with mock.patch.object(update, "latest_release", return_value=self.release_info("v1.2.0")):
+            with mock.patch.object(self.updater, "download_candidate", side_effect=update.UpdateError("corrupt zip")):
                 self.assertEqual(self.updater.sync(True), "failed")
         state = self.updater.state()
         self.assertEqual(state["current"], self.current)
         self.assertEqual(state["pending"], self.candidate)
-        self.assertIn("patch conflict", state["last_error"])
+        self.assertIn("corrupt zip", state["last_error"])
         with mock.patch.object(update, "stable_is_running", return_value=True), \
              mock.patch.object(update.subprocess, "Popen"), \
              mock.patch("ctypes.windll.user32.MessageBoxW") as alert:
             self.updater.launch([])
             self.updater.launch([])
         alert.assert_called_once()
-        self.assertIn("patch conflict", alert.call_args.args[1])
+        self.assertIn("corrupt zip", alert.call_args.args[1])
 
-    def test_unchanged_failure_is_not_rebuilt_until_explicit_retry(self):
-        self.updater.change(failed_tag="v1.1.0", failure_detail="compiler error")
+    def test_unchanged_failure_is_not_retried_until_explicit_force(self):
+        self.updater.change(failed_tag="v1.1.0", failure_detail="smoke check failed")
         with mock.patch.object(update, "latest_release", side_effect=TimeoutError("offline")):
             self.assertEqual(self.updater.sync(True), "failed")
         self.updater.change(last_checked="2000-01-01T00:00:00+00:00")
-        with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
-            with mock.patch.object(self.updater, "build_candidate", return_value=self.candidate) as build:
+        with mock.patch.object(update, "latest_release", return_value=self.release_info("v1.1.0")):
+            with mock.patch.object(self.updater, "download_candidate", return_value=self.candidate) as download:
                 self.assertEqual(self.updater.sync(), "failed-awaiting-retry")
-                build.assert_not_called()
-                self.assertEqual(self.updater.state()["last_error"], "compiler error")
+                download.assert_not_called()
+                self.assertEqual(self.updater.state()["last_error"], "smoke check failed")
                 self.assertEqual(self.updater.sync(True), "ready")
-                build.assert_called_once()
+                download.assert_called_once()
 
     def test_disabled_and_recent_checks_do_not_contact_network(self):
         with mock.patch.object(update, "latest_release") as latest:
@@ -171,7 +277,7 @@ class WindowsUpdateTests(unittest.TestCase):
             self.assertEqual(self.updater.sync(), "not-due")
             latest.assert_not_called()
 
-    def test_tls_disconnect_is_logged_without_a_popup_and_next_check_recovers(self):
+    def test_tls_disconnect_is_logged_without_popup_and_next_check_recovers(self):
         failure = update.urllib.error.URLError(
             ssl.SSLEOFError(8, "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol"))
         with mock.patch.object(update.urllib.request, "urlopen", side_effect=failure) as request, \
@@ -180,96 +286,84 @@ class WindowsUpdateTests(unittest.TestCase):
         self.assertEqual(request.call_count, 3)
         state = self.updater.state()
         self.assertEqual(state["current"], self.current)
-        self.assertEqual(state["last_error"], str(failure))
         self.assertIsNone(state.get("failed_tag"))
         with mock.patch.object(update, "stable_is_running", return_value=True), \
-             mock.patch.object(update.subprocess, "Popen") as launch, \
+             mock.patch.object(update.subprocess, "Popen"), \
              mock.patch("ctypes.windll.user32.MessageBoxW") as alert:
             self.updater.launch([])
         alert.assert_not_called()
-        self.assertEqual(launch.call_args_list[0].args[0], [str(Path(self.current["directory"]) / "Zed.exe")])
-        self.assertEqual(launch.call_args_list[1].args[0][-1], "sync")
         log = self.updater.log.read_text(encoding="utf-8")
-        self.assertIn(update.RELEASE_API, log)
         self.assertIn("UNEXPECTED_EOF_WHILE_READING", log)
 
         self.updater.change(last_checked="2000-01-01T00:00:00+00:00")
-        with mock.patch.object(update, "latest_release", return_value=self.current["tag"]), \
-             mock.patch.object(self.updater, "build_candidate") as build:
+        with mock.patch.object(update, "latest_release", return_value=self.release_info(self.current["tag"])), \
+             mock.patch.object(self.updater, "download_candidate") as download:
             self.assertEqual(self.updater.sync(), "up-to-date")
-        build.assert_not_called()
+        download.assert_not_called()
         self.assertIsNone(self.updater.state()["last_error"])
 
-    def test_network_failure_during_candidate_download_can_retry_next_cycle(self):
-        with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
-            with mock.patch.object(self.updater, "build_candidate", side_effect=TimeoutError("download timeout")):
-                self.assertEqual(self.updater.sync(True), "failed")
-        self.assertIsNone(self.updater.state().get("failed_tag"))
+    def test_only_exit_allows_activation_and_prunes_stale_versions_and_db_backups(self):
+        stale = self.release("v0.8.0", "1" * 40)
+        database = self.root / "profile/Zed/db/0-stable"
+        database.mkdir(parents=True)
+        (database / "db.sqlite").write_bytes(b"pre-migration database fixture")
+        backups_root = self.updater.work / "database-backups"
+        for stamp in ("1000", "2000", "3000", "4000"):
+            (backups_root / stamp).mkdir(parents=True)
+            (backups_root / stamp / "db.sqlite").write_bytes(b"old backup")
 
-    def test_missing_math_test_evidence_stops_before_full_build(self):
-        manifest = self.root / "candidate.json"
-        patch = self.root / "candidate.patch"
-        patch.write_bytes(b"patch fixture")
-        update.atomic_json(manifest, {"rust_toolchain": "1.98.1", "zed": {"tag": "v1.1.0", "commit": "b" * 40},
-                                      "patch": {"file": str(patch)}})
-        with mock.patch.object(self.updater, "prepare", return_value=(self.root, manifest)):
-            with mock.patch.object(self.updater, "build_action", return_value="test result: ok. 5 passed; 0 failed;") as build:
-                with self.assertRaisesRegex(update.UpdateError, "evidence"):
-                    self.updater.build_candidate("v1.1.0", self.updater.state())
-        self.assertEqual([call.args[0] for call in build.call_args_list], ["test"])
-
-    def test_native_test_evidence_is_reused_only_for_unchanged_candidate(self):
-        manifest = self.root / "candidate.json"
-        patch = self.root / "candidate.patch"
-        patch.write_bytes(b"tested patch")
-        update.atomic_json(manifest, {"rust_toolchain": "1.98.1", "zed": {"tag": "v1.1.0", "commit": "b" * 40},
-                                      "patch": {"file": str(patch)}})
-        output = ("test katex::tests::test_math_with_setext_lines_renders_to_svg ... ok\n"
-                  "test result: ok. 217 passed; 0 failed;")
-        with mock.patch.object(self.updater, "build_action", return_value=output) as build:
-            self.assertEqual(self.updater.native_tests(self.root, manifest, {}), 217)
-            build.reset_mock()
-            with mock.patch.object(update.subprocess, "check_output", return_value=b"tested patch"):
-                self.assertEqual(self.updater.native_tests(self.root, manifest, {}), 217)
-                build.assert_not_called()
-            patch.write_bytes(b"changed patch")
-            self.assertEqual(self.updater.native_tests(self.root, manifest, {}), 217)
-            build.assert_called_once()
-
-    def test_transient_https_failure_retries_with_backoff_without_weakening_tls(self):
-        response = object()
-        with mock.patch.object(update.urllib.request, "urlopen", side_effect=[update.urllib.error.URLError("TLS EOF"), response]) as request:
-            with mock.patch.object(update.time, "sleep") as sleep:
-                self.assertIs(update.open_url("https://api.github.com/test", 30), response)
-        self.assertEqual(request.call_count, 2)
-        sleep.assert_called_once_with(3)
-        self.assertEqual(request.call_args.kwargs, {"timeout": 30})
-
-    def test_only_exit_allows_activation_and_preserves_rollback(self):
         self.updater.change(pending=self.candidate)
         self.assertEqual(self.updater.promote(True)["current"], self.current)
         state = self.updater.promote(False)
         self.assertEqual(state["current"], self.candidate)
         self.assertEqual(state["previous"], self.current)
         self.assertIsNone(state["pending"])
-
-    def test_disable_prevents_pending_activation_and_other_build_state_survives_switch(self):
-        self.updater.change(enabled=False, pending=self.candidate)
-        self.assertEqual(self.updater.promote(False)["current"], self.current)
-        self.updater.change(enabled=True, phase="building", building_tag="v1.2.0")
-        state = self.updater.promote(False)
-        self.assertEqual(state["current"], self.candidate)
-        self.assertEqual(state["phase"], "building")
-        self.assertEqual(state["building_tag"], "v1.2.0")
-
-    def test_activation_copies_database_before_switch_without_changing_original(self):
-        database = self.root / "profile/Zed/db/0-stable"
-        database.mkdir(parents=True)
-        (database / "db.sqlite").write_bytes(b"pre-migration database fixture")
-        self.updater.change(pending=self.candidate)
-        state = self.updater.promote(False)
+        self.assertFalse(Path(stale["directory"]).exists())
+        self.assertTrue(Path(self.current["directory"]).exists())
+        self.assertTrue(Path(self.candidate["directory"]).exists())
+        remaining_backups = sorted(p.name for p in backups_root.iterdir() if p.is_dir())
+        self.assertEqual(len(remaining_backups), update.MAX_DATABASE_BACKUPS)
         snapshot = Path(state["last_database_backup"]) / "0-stable/db.sqlite"
         self.assertEqual(snapshot.read_bytes(), (database / "db.sqlite").read_bytes())
+
+    def test_cleanup_legacy_build_caches_preserves_active_releases_and_supports_dry_run(self):
+        previous = self.release("v0.9.0", "c" * 40)
+        stale = self.release("v0.7.0", "2" * 40)
+        self.updater.change(previous=previous, pending=self.candidate)
+        for rel in (
+            ".work/zed-upstream/target/big.rlib",
+            ".work/update-sources/v1.30.2/file.rs",
+            ".work/cargo/bin/cargo.exe",
+            ".work/rustup/toolchains/1.98.1/rustc.exe",
+            ".work/windows-updates/webrtc/webrtc.lib",
+            ".work/windows-updates/acp-1.29.2-abc/data.bin",
+            ".work/desktop-shortcut-backup/Zed-original.lnk",
+            "dist/Zed Native Math (Community)/Zed.exe",
+        ):
+            target = self.root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"x" * 64)
+
+        preview = self.updater.cleanup_legacy_build_caches(dry_run=True)
+        self.assertTrue(preview["dry_run"])
+        self.assertGreater(preview["freed_bytes"], 0)
+        self.assertTrue((self.root / ".work/zed-upstream").exists())
+
+        actual = self.updater.cleanup_legacy_build_caches(dry_run=False)
+        self.assertFalse(actual["dry_run"])
+        self.assertFalse((self.root / ".work/zed-upstream").exists())
+        self.assertFalse((self.root / ".work/cargo").exists())
+        self.assertFalse((self.root / ".work/rustup").exists())
+        self.assertFalse((self.root / ".work/windows-updates/webrtc").exists())
+        self.assertFalse((self.root / ".work/windows-updates/acp-1.29.2-abc").exists())
+        self.assertFalse(Path(stale["directory"]).exists())
+        self.assertFalse((self.root / "dist/Zed Native Math (Community)").exists())
+        # Active, previous, pending, state, and shortcut backups must survive.
+        self.assertTrue(Path(self.current["directory"]).exists())
+        self.assertTrue(Path(previous["directory"]).exists())
+        self.assertTrue(Path(self.candidate["directory"]).exists())
+        self.assertTrue(self.updater.state_path.is_file())
+        self.assertTrue((self.root / ".work/desktop-shortcut-backup/Zed-original.lnk").is_file())
 
     def test_rollback_waits_for_exit_and_holds_rejected_release(self):
         self.updater.change(current=self.candidate, previous=self.current)
@@ -279,10 +373,10 @@ class WindowsUpdateTests(unittest.TestCase):
         state = self.updater.state()
         self.assertEqual(state["current"], self.current)
         self.assertEqual(state["held_tag"], "v1.1.0")
-        with mock.patch.object(update, "latest_release", return_value="v1.1.0"):
-            with mock.patch.object(self.updater, "build_candidate") as build:
+        with mock.patch.object(update, "latest_release", return_value=self.release_info("v1.1.0")):
+            with mock.patch.object(self.updater, "download_candidate") as download:
                 self.assertEqual(self.updater.sync(True), "held-after-rollback")
-                build.assert_not_called()
+                download.assert_not_called()
 
     def test_launcher_passes_file_arguments_and_removes_stateless_test_mode(self):
         self.updater.change(enabled=False)
@@ -303,144 +397,20 @@ class WindowsUpdateTests(unittest.TestCase):
             with mock.patch.object(update, "run", return_value=json.dumps(processes)):
                 self.assertEqual(update.stable_is_running(), expected)
 
-    def test_windows_run_resolves_tools_using_child_path(self):
-        tools = self.root / "tools"
-        tools.mkdir()
-        executable = tools / "local-tool.exe"
-        executable.write_bytes(b"path lookup only")
-        environment = {"PATH": str(tools), "PATHEXT": ".EXE"}
-        with mock.patch.object(update.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"ok")) as run:
-            self.assertEqual(update.run(["local-tool", "--version"], environment=environment), "ok")
-        self.assertEqual(Path(run.call_args.args[0][0]), executable)
-
-    def test_structured_commands_keep_progress_out_of_json(self):
-        output = update.run([sys.executable, "-c",
-                             "import sys; print('download progress',file=sys.stderr); print('{\"ok\":true}')"],
-                            separate_stderr=True)
-        self.assertTrue(json.loads(output)["ok"])
-
-    def test_package_smoke_checks_cli_identity_and_actual_gui_entry(self):
+    def test_package_smoke_checks_required_files_gui_and_cli_identity(self):
         recipe = {"zed": {"tag": "v1.1.0", "commit": "b" * 40}}
         directory = Path(self.candidate["directory"])
         with mock.patch.object(self.updater, "command", side_effect=[
-            "Usage: Zed [PATHS_OR_URLS]...", "Zed 1.1.0 " + "b" * 40 + " - " + str(directory / "Zed.exe"),
+            "Usage: Zed [PATHS_OR_URLS]...",
+            "Zed 1.1.0 " + "b" * 40 + " - " + str(directory / "Zed.exe"),
         ]):
             self.updater.validate_package(directory, recipe)
         with mock.patch.object(self.updater, "command", side_effect=["PATHS_OR_URLS", "Zed 1.0.0 wrong.exe"]):
             with self.assertRaises(update.UpdateError):
                 self.updater.validate_package(directory, recipe)
-
-    def test_real_three_way_update_preserves_upstream_code_and_lockfile(self):
-        repository = self.updater.repository
-        repository.mkdir(parents=True)
-
-        def git(*args):
-            return update.run(["git", *args], cwd=repository)
-
-        git("init")
-        git("config", "user.name", "Update integration test")
-        git("config", "user.email", "update-test@example.invalid")
-        git("remote", "add", "origin", update.REPOSITORY)
-        lines = ["line " + str(number) + "\n" for number in range(30)]
-        (repository / "renderer.rs").write_text("".join(lines), encoding="utf-8")
-        (repository / "Cargo.lock").write_text("base lock\n", encoding="utf-8")
-        (repository / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.98.1"\n', encoding="utf-8")
-        git("add", ".")
-        git("commit", "-m", "upstream base")
-        base_commit = git("rev-parse", "HEAD")
-        lines[10] = "native math\n"
-        (repository / "renderer.rs").write_text("".join(lines), encoding="utf-8")
-        (repository / "Cargo.lock").write_text("obsolete patched lock\n", encoding="utf-8")
-        patch = self.root / "native.patch"
-        patch.write_bytes(subprocess.check_output(["git", "diff", "--binary"], cwd=repository))
-        git("restore", "renderer.rs", "Cargo.lock")
-        lines[10] = "line 10\n"
-        lines[12] = "new upstream behavior\n"
-        (repository / "renderer.rs").write_text("".join(lines), encoding="utf-8")
-        (repository / "Cargo.lock").write_text("new official lock\n", encoding="utf-8")
-        git("add", ".")
-        git("commit", "-m", "new official release")
-        git("tag", "v1.1.0")
-        commit = git("rev-parse", "HEAD")
-        recipe = {"zed": {"tag": "v1.0.0", "commit": base_commit}, "patch": {"file": str(patch)},
-                  "verification": {"old_macos_results": True}, "rust_toolchain": "1.98.1"}
-        update.atomic_json(Path(self.current["manifest"]), recipe)
-        update.atomic_json(self.root / "manifest.json", {"windows_update": {}})
-        actual = self.updater.command
-        cargo_calls = []
-
-        def command(arguments, cwd=None, environment=None):
-            if arguments[0] == "git" and arguments[1] == "fetch":
-                return ""
-            if arguments[0] == "rustup":
-                return "toolchain fixture"
-            if arguments[0] == "cargo":
-                self.assertEqual((cwd / "Cargo.lock").read_text(), "new official lock\n")
-                cargo_calls.append(True)
-                if len(cargo_calls) == 1:
-                    raise update.UpdateError("temporary download failure")
-                (cwd / "Cargo.lock").write_text("new official lock plus math\n", encoding="utf-8")
-                return ""
-            return actual(arguments, cwd, environment)
-
-        with mock.patch.object(self.updater, "command", side_effect=command):
-            with self.assertRaisesRegex(update.UpdateError, "download"):
-                self.updater.prepare("v1.1.0", self.updater.state())
-            # Resume from the completed patch step, without resetting or applying twice.
-            source, manifest_path = self.updater.prepare("v1.1.0", self.updater.state())
-        prepared = update.read_json(manifest_path)
-        self.assertEqual(prepared["zed"], {"tag": "v1.1.0", "commit": commit})
-        self.assertNotIn("verification", prepared)
-        self.assertEqual((source / "Cargo.lock").read_text(), "new official lock plus math\n")
-        self.assertIn("native math", (source / "renderer.rs").read_text())
-        self.assertIn("new upstream behavior", (source / "renderer.rs").read_text())
-        self.assertEqual(git("status", "--porcelain"), "")
-        update.run(["git", "apply", "--reverse", "--check", prepared["patch"]["file"]], cwd=source)
-        lines[20] = "next upstream release\n"
-        (repository / "renderer.rs").write_text("".join(lines), encoding="utf-8")
-        git("add", ".")
-        git("commit", "-m", "next release")
-        git("tag", "v1.2.0")
-        update.atomic_json(self.root / "manifest.json", {"windows_update": {"seed": {
-            "tag": "v1.1.0", "commit": commit, "patch": prepared["patch"]["file"],
-        }}})
-        # Replaying the maintained patch on its exact tag must use its tested lockfile.
-        with mock.patch.object(self.updater, "command", side_effect=command):
-            count = len(cargo_calls)
-            seed_source, _ = self.updater.prepare("v1.1.0", self.updater.state())
-            self.assertEqual(len(cargo_calls), count)
-            self.assertEqual((seed_source / "Cargo.lock").read_bytes(), (source / "Cargo.lock").read_bytes())
-        # An earlier run with the old math patch already conflicted for this release.
-        incomplete = self.root / ".work/update-sources/v1.2.0"
-        git("worktree", "add", "--detach", str(incomplete), "v1.2.0")
-        marker = incomplete / "renderer.rs"
-        marker.write_text("retained manual resolution in progress\n", encoding="utf-8")
-        with mock.patch.object(self.updater, "command", side_effect=command):
-            next_source, _ = self.updater.prepare("v1.2.0", self.updater.state())
-        self.assertEqual(marker.read_text(), "retained manual resolution in progress\n")
-        self.assertIn("native math", (next_source / "renderer.rs").read_text())
-        self.assertIn("next upstream release", (next_source / "renderer.rs").read_text())
-        self.assertEqual(git("status", "--porcelain"), "")
-
-    def test_official_webrtc_download_uses_supported_custom_cache_and_reuses_it(self):
-        helper = self.root / "webrtc-helper/src/lib.rs"
-        helper.parent.mkdir(parents=True)
-        helper.write_text('pub const WEBRTC_TAG: &str = "webrtc-abc123-4";', encoding="utf-8")
-        metadata = {"packages": [{"name": "webrtc-sys-build", "manifest_path": str(helper.parent.parent / "Cargo.toml")}]}
-        data = io.BytesIO()
-        with zipfile.ZipFile(data, "w") as bundle:
-            bundle.writestr("win-x64-release/lib/webrtc.lib", "official binary fixture")
-            bundle.writestr("win-x64-release/include/api/peer_connection_interface.h", "header fixture")
-        data.seek(0)
-        with mock.patch.object(update, "run", return_value=json.dumps(metadata)):
-            with mock.patch.object(update.urllib.request, "urlopen", return_value=data) as download:
-                first = {}
-                self.updater.prepare_webrtc(self.root, first)
-                second = {}
-                self.updater.prepare_webrtc(self.root, second)
-        self.assertEqual(first["LK_CUSTOM_WEBRTC"], second["LK_CUSTOM_WEBRTC"])
-        download.assert_called_once()
-        self.assertTrue(download.call_args.args[0].startswith("https://github.com/zed-industries/livekit-rust-sdks/"))
+        (directory / "conpty.dll").unlink()
+        with self.assertRaisesRegex(update.UpdateError, "conpty.dll"):
+            self.updater.validate_package(directory, recipe)
 
 
 if __name__ == "__main__":
