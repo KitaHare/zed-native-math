@@ -207,6 +207,48 @@ def prepare_webrtc(source, cache_root):
     return directory
 
 
+def prepare_conpty(source, release=False):
+    """Ensure official ConPTY runtime files exist next to zed.exe when build.rs extraction fails."""
+    binary = executable_path(source, release)
+    target_dir = binary.parent
+    conpty_target = target_dir / "conpty.dll"
+    console_target = target_dir / "OpenConsole.exe"
+    if conpty_target.is_file() and console_target.is_file():
+        return target_dir
+    build_rs = source / "crates/zed/build.rs"
+    if not build_rs.is_file():
+        raise BuildError("Cannot locate crates/zed/build.rs to read the official ConPTY URL")
+    match = re.search(
+        r'let\s+conpty_url\s*=\s*"(https://github\.com/microsoft/terminal/releases/download/[^"]+\.nupkg)"',
+        build_rs.read_text(encoding="utf-8"),
+    )
+    if not match:
+        raise BuildError("Cannot read the official ConPTY URL from crates/zed/build.rs")
+    url = match.group(1)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    archive = target_dir / f"conpty-{os.getpid()}.nupkg"
+    try:
+        with open_url(url, timeout=90) as response, archive.open("wb") as output:
+            shutil.copyfileobj(response, output)
+        with zipfile.ZipFile(archive) as bundle:
+            members = {
+                "runtimes/win-x64/native/conpty.dll": conpty_target,
+                "build/native/runtimes/x64/OpenConsole.exe": console_target,
+            }
+            for member_name, destination in members.items():
+                try:
+                    info = bundle.getinfo(member_name)
+                except KeyError as error:
+                    raise BuildError(f"Official ConPTY archive is missing {member_name}") from error
+                with bundle.open(info) as src, destination.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
+    finally:
+        if archive.exists():
+            archive.unlink()
+    print("Prepared official ConPTY runtime in " + str(target_dir))
+    return target_dir
+
+
 def build_environment():
     environment = os.environ.copy()
     for name, value in {
@@ -320,10 +362,12 @@ def archive_windows_package(directory, archive_path):
 
 def validate_windows_package(directory, expected_tag, expected_commit):
     directory = Path(directory).expanduser().resolve()
-    help_output = run([directory / "Zed.exe", "--help"], capture=True).stdout.decode("utf-8", errors="replace")
+    help_proc = run([directory / "Zed.exe", "--help"], capture=True)
+    help_output = (help_proc.stdout + (help_proc.stderr or b"")).decode("utf-8", errors="replace")
     if "PATHS_OR_URLS" not in help_output:
         raise BuildError("Packaged GUI command entry did not start correctly")
-    version_output = run([directory / "bin/zed.exe", "--version"], capture=True).stdout.decode("utf-8", errors="replace")
+    version_proc = run([directory / "bin/zed.exe", "--version"], capture=True)
+    version_output = (version_proc.stdout + (version_proc.stderr or b"")).decode("utf-8", errors="replace")
     if ("Zed " + expected_tag.removeprefix("v") + " " not in version_output
             or expected_commit not in version_output
             or str(directory).lower() not in version_output.lower()):
@@ -366,7 +410,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=[
         "verify", "apply", "test", "build", "package",
-        "prepare", "prepare-webrtc", "archive", "validate-package",
+        "prepare", "prepare-webrtc", "prepare-conpty", "archive", "validate-package",
     ])
     parser.add_argument("--source", type=Path, help="separate official Zed source checkout")
     parser.add_argument("--manifest", type=Path,
@@ -409,6 +453,9 @@ def main():
             directory = prepare_webrtc(source, arguments.output_dir or (ROOT / ".work/webrtc"))
             if directory:
                 print(str(directory))
+            return 0
+        if arguments.action == "prepare-conpty":
+            prepare_conpty(source, arguments.release)
             return 0
         verify_repository(source, BASE_COMMIT)
         if arguments.action == "apply":

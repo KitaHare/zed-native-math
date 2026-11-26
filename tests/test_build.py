@@ -456,6 +456,32 @@ class BuildHelperTests(unittest.TestCase):
             self.assertTrue(plan.release_asset_exists("KitaHare/zed-native-math", "v1.30.2", "zed-native-math-v1.30.2-windows-x64.zip"))
             self.assertFalse(plan.release_asset_exists("KitaHare/zed-native-math", "v1.30.2", "other.zip"))
 
+    def test_prepare_conpty_extracts_official_nupkg_and_skips_when_present(self):
+        import io
+        import zipfile
+        build_rs = self.source / "crates/zed/build.rs"
+        build_rs.parent.mkdir(parents=True)
+        build_rs.write_text(
+            'let conpty_url = "https://github.com/microsoft/terminal/releases/download/v1.25.1912.0/Microsoft.Windows.Console.ConPTY.1.25.260710002-preview.nupkg";\n',
+            encoding="utf-8",
+        )
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w") as bundle:
+            bundle.writestr("runtimes/win-x64/native/conpty.dll", b"conpty bytes")
+            bundle.writestr("build/native/runtimes/x64/OpenConsole.exe", b"console bytes")
+        payload.seek(0)
+        response = mock.MagicMock()
+        response.__enter__.return_value = payload
+        with mock.patch.object(builder.sys, "platform", "win32"), \
+             mock.patch.object(builder, "open_url", return_value=response) as download:
+            target_dir = builder.prepare_conpty(self.source, release=True)
+            self.assertEqual((target_dir / "conpty.dll").read_bytes(), b"conpty bytes")
+            self.assertEqual((target_dir / "OpenConsole.exe").read_bytes(), b"console bytes")
+            download.assert_called_once()
+            # Already present: must not re-download.
+            builder.prepare_conpty(self.source, release=True)
+            download.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
