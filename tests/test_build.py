@@ -521,7 +521,7 @@ class BuildHelperTests(unittest.TestCase):
                     return subprocess.CompletedProcess(arguments, 0, b"Usage: zed [PATHS_OR_URLS]", b"")
                 if arguments[1] == "--version":
                     return subprocess.CompletedProcess(
-                        arguments, 0, f"Zed {version} {catalog['zed']['commit']}\n".encode(), b""
+                        arguments, 0, f"Zed {version} – {destination}\n".encode("utf-8"), b""
                     )
                 raise AssertionError(f"Unexpected command: {arguments}")
 

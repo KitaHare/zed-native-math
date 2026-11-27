@@ -458,8 +458,9 @@ def validate_macos_package(app_directory, expected_tag, expected_commit):
     if cli_path.is_file():
         version_proc = run([cli_path, "--version"], capture=True)
         version_output = (version_proc.stdout + (version_proc.stderr or b"")).decode("utf-8", errors="replace")
+        # macOS Zed CLI prints "Zed <version> – <path/to/App.app>" (without commit SHA).
         if ("Zed " + expected_version + " " not in version_output
-                or expected_commit not in version_output):
+                or (expected_commit not in version_output and str(app_directory) not in version_output)):
             raise BuildError("Packaged macOS CLI does not match expected build: " + version_output.strip())
         print("Validated packaged macOS GUI and CLI: " + version_output.strip())
     else:
