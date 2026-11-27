@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -194,6 +195,17 @@ def directory_size(path):
     return total
 
 
+def rmtree_force(path):
+    """Remove a directory tree on Windows, clearing read-only attributes (e.g. Git packfiles)."""
+    def handle_error(func, target, _exc):
+        try:
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        except OSError:
+            pass
+    shutil.rmtree(path, onerror=handle_error)
+
+
 def extract_zip_safely(archive_path, destination):
     destination.mkdir(parents=True, exist_ok=True)
     resolved_root = destination.resolve()
@@ -247,6 +259,59 @@ class Updater:
             atomic_json(self.state_path, state)
             return state
 
+    def write_cli_shims(self):
+        """Create stable dist/bin/zed shims that always delegate to the active version."""
+        bin_dir = self.root / "dist/bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        python_exe = Path(sys.executable)
+        if python_exe.name.lower() == "pythonw.exe":
+            console_python = python_exe.with_name("python.exe")
+            if console_python.is_file():
+                python_exe = console_python
+        worker = self.root / "windows_update.py"
+        # Use %~dp0 so cmd.exe resolves non-ASCII repo paths cleanly under GBK/CP936 as well as UTF-8.
+        cmd_script = (
+            "@echo off\r\n"
+            f'"{python_exe}" "%~dp0..\\..\\windows_update.py" cli %*\r\n'
+        )
+        (bin_dir / "zed.cmd").write_text(cmd_script, encoding="utf-8")
+        sh_script = (
+            "#!/usr/bin/env sh\n"
+            f'exec "{python_exe.as_posix()}" "{worker.as_posix()}" cli "$@"\n'
+        )
+        (bin_dir / "zed").write_bytes(sh_script.encode("utf-8"))
+        return bin_dir
+
+    def refresh_shell_icons(self, active_directory):
+        """Keep HKCU context-menu and open-with icons pointed at the active Zed.exe."""
+        if os.name != "nt":
+            return
+        icon_value = str(Path(active_directory) / "Zed.exe") + ",0"
+        try:
+            import winreg
+        except ImportError:
+            return
+        shell_keys = (
+            r"Software\Classes\*\shell\ZedNativeMath",
+            r"Software\Classes\Directory\shell\ZedNativeMath",
+            r"Software\Classes\Directory\Background\shell\ZedNativeMath",
+        )
+        for subkey in shell_keys:
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as key:
+                    winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon_value)
+            except OSError:
+                pass
+        for subkey in (
+            r"Software\Classes\Applications\Zed.exe\DefaultIcon",
+            r"Software\Classes\zed\DefaultIcon",
+        ):
+            try:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as key:
+                    winreg.SetValueEx(key, "", 0, winreg.REG_SZ, icon_value)
+            except OSError:
+                pass
+
     def initialize(self):
         repo = self.release_repository()
         if self.state_path.exists():
@@ -267,6 +332,7 @@ class Updater:
                     if state.get("phase") == "failed":
                         state["phase"] = "ready" if state.get("pending") else "installed"
                 atomic_json(self.state_path, state)
+            self.write_cli_shims()
             return
 
         package = self.root / "dist/Zed Native Math (Community)"
@@ -300,6 +366,7 @@ class Updater:
             "phase": "installed",
             "last_checked": now(),
         })
+        self.write_cli_shims()
 
     def command(self, command, cwd=None, environment=None):
         return run(command, cwd, environment, self.log)
@@ -461,6 +528,7 @@ class Updater:
             self.root / ".work/rustup",
             self.root / ".work/tools",
             self.root / ".work/smoke-data",
+            self.root / ".work/rustup-init.exe",
             self.work / "webrtc",
             self.work / "candidates",
             self.work / "downloads",
@@ -492,8 +560,12 @@ class Updater:
             removed.append({"path": str(target), "bytes": size})
             if not dry_run:
                 if target.is_dir():
-                    shutil.rmtree(target, ignore_errors=True)
+                    rmtree_force(target)
                 else:
+                    try:
+                        os.chmod(target, stat.S_IWRITE)
+                    except OSError:
+                        pass
                     target.unlink(missing_ok=True)
         return {"dry_run": dry_run, "freed_bytes": freed_bytes, "items": removed}
 
@@ -510,6 +582,7 @@ class Updater:
                     state["phase"] = "up-to-date"
                 atomic_json(self.state_path, state)
                 self.prune_unused(state)
+                self.refresh_shell_icons(state["current"]["directory"])
             return state
 
     def backup_database(self):
@@ -532,6 +605,19 @@ class Updater:
             state["current"], state["previous"] = state["previous"], current
             state.update(pending=None, held_tag=current["tag"], phase="rolled-back")
             atomic_json(self.state_path, state)
+            self.refresh_shell_icons(state["current"]["directory"])
+
+    def run_cli(self, arguments):
+        state = self.promote(stable_is_running())
+        current = state["current"]
+        cli_binary = Path(current["directory"]) / "bin/zed.exe"
+        if not cli_binary.is_file():
+            raise UpdateError("Active CLI binary is missing; run install-windows-updates.ps1 or roll back")
+        environment = os.environ.copy()
+        environment.pop("ZED_STATELESS", None)
+        # Preserve caller's working directory so relative paths like `zed .` resolve properly.
+        result = subprocess.run([str(cli_binary), *arguments], env=environment)
+        return result.returncode
 
     def launch(self, arguments):
         state = self.promote(stable_is_running())
@@ -565,7 +651,7 @@ class Updater:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=[
-        "initialize", "sync", "launch", "status", "rollback", "disable", "cleanup",
+        "initialize", "sync", "launch", "cli", "status", "rollback", "disable", "cleanup",
     ])
     parser.add_argument("--force", action="store_true", help="check now and retry a failed candidate")
     parser.add_argument("--dry-run", action="store_true", help="preview paths without deleting (cleanup)")
@@ -582,6 +668,8 @@ def main():
             return 1 if result == "failed" else 0
         elif arguments.action == "launch":
             updater.launch(forwarded)
+        elif arguments.action == "cli":
+            return updater.run_cli(forwarded)
         elif arguments.action == "status":
             print(json.dumps(updater.state(), ensure_ascii=False, indent=2))
         elif arguments.action == "disable":

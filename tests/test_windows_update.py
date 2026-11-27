@@ -412,6 +412,25 @@ class WindowsUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(update.UpdateError, "conpty.dll"):
             self.updater.validate_package(directory, recipe)
 
+    def test_cli_shims_and_run_cli_preserve_cwd_promote_and_survive_cleanup(self):
+        bin_dir = self.updater.write_cli_shims()
+        cmd_text = (bin_dir / "zed.cmd").read_text(encoding="utf-8")
+        self.assertIn("%~dp0..\\..\\windows_update.py", cmd_text)
+        self.assertIn("cli", (bin_dir / "zed").read_text(encoding="utf-8"))
+        self.updater.change(pending=self.candidate)
+        with mock.patch.object(update, "stable_is_running", return_value=False), \
+             mock.patch.object(self.updater, "refresh_shell_icons") as refresh, \
+             mock.patch.object(update.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as runner:
+            self.assertEqual(self.updater.run_cli([".", "--wait"]), 0)
+        refresh.assert_called_once_with(self.candidate["directory"])
+        self.assertEqual(runner.call_args.args[0],
+                         [str(Path(self.candidate["directory"]) / "bin/zed.exe"), ".", "--wait"])
+        self.assertNotIn("cwd", runner.call_args.kwargs)
+        # Cleanup must preserve dist/bin shims.
+        self.updater.cleanup_legacy_build_caches(dry_run=False)
+        self.assertTrue((bin_dir / "zed.cmd").is_file())
+        self.assertTrue((bin_dir / "zed").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
