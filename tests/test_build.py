@@ -482,6 +482,109 @@ class BuildHelperTests(unittest.TestCase):
             builder.prepare_conpty(self.source, release=True)
             download.assert_called_once()
 
+    def test_macos_release_build_includes_cli_and_runtime_shaders(self):
+        with mock.patch.object(builder.sys, "platform", "darwin"):
+            command = builder.cargo_command("build", release=True)
+        self.assertEqual(command, [
+            "cargo", "build", "--locked", "-p", "zed", "--bin", "zed",
+            "-p", "cli", "--bin", "cli", "--features", "gpui_platform/runtime_shaders", "--release",
+        ])
+
+    def test_macos_package_copies_cli_manifest_licenses_and_validates_and_archives(self):
+        catalog = self.select_default("darwin")
+        version = catalog["zed"]["tag"].removeprefix("v")
+        template = self.base / "Official.app"
+        (template / "Contents/MacOS").mkdir(parents=True)
+        with (template / "Contents/Info.plist").open("wb") as stream:
+            plistlib.dump({"CFBundleShortVersionString": version}, stream)
+        (self.source / "LICENSE-GPL").write_text("gpl\n", encoding="utf-8")
+        (self.source / "LICENSE-APACHE").write_text("apache\n", encoding="utf-8")
+
+        with mock.patch.object(builder.sys, "platform", "darwin"):
+            binary = builder.executable_path(self.source, release=True)
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"macos gui")
+            (binary.parent / "cli").write_bytes(b"macos cli")
+            destination = self.base / "Zed Native Math (Community).app"
+            with mock.patch.object(builder, "run") as mock_run:
+                builder.package_application(self.source, template, destination, release=True)
+            self.assertEqual((destination / "Contents/MacOS/zed").read_bytes(), b"macos gui")
+            self.assertEqual((destination / "Contents/MacOS/cli").read_bytes(), b"macos cli")
+            self.assertTrue((destination / "Contents/Resources/native-math-manifest.json").is_file())
+            self.assertTrue((destination / "Contents/Resources/licenses/ZED-LICENSE-GPL").is_file())
+            self.assertEqual(mock_run.call_count, 3)
+
+            def fake_validate_run(arguments, source=None, capture=False, environment=None, check=True):
+                if arguments[0] == "codesign":
+                    return subprocess.CompletedProcess(arguments, 0, b"", b"")
+                if arguments[1] == "--help":
+                    return subprocess.CompletedProcess(arguments, 0, b"Usage: zed [PATHS_OR_URLS]", b"")
+                if arguments[1] == "--version":
+                    return subprocess.CompletedProcess(
+                        arguments, 0, f"Zed {version} {catalog['zed']['commit']}\n".encode(), b""
+                    )
+                raise AssertionError(f"Unexpected command: {arguments}")
+
+            with mock.patch.object(builder, "run", side_effect=fake_validate_run):
+                builder.validate_macos_package(destination, catalog["zed"]["tag"], catalog["zed"]["commit"])
+
+            archive = self.base / "zed-native-math-macos-arm64.zip"
+
+            def fake_ditto(arguments, source=None, capture=False, environment=None, check=True):
+                self.assertEqual(arguments[0], "ditto")
+                Path(arguments[-1]).write_bytes(b"fake zip")
+                return subprocess.CompletedProcess(arguments, 0, b"", b"")
+
+            with mock.patch.object(builder, "run", side_effect=fake_ditto):
+                builder.archive_macos_package(destination, archive)
+            self.assertEqual(archive.read_bytes(), b"fake zip")
+
+    def test_plan_release_checks_windows_and_macos_assets_independently(self):
+        plan_spec = importlib.util.spec_from_file_location(
+            "plan_release_multi", ROOT / ".github/scripts/plan_release.py"
+        )
+        plan = importlib.util.module_from_spec(plan_spec)
+        plan_spec.loader.exec_module(plan)
+        output_file = self.base / "github_output.txt"
+        existing = {"zed-native-math-v1.30.2-windows-x64.zip"}
+
+        fake_check = subprocess.CompletedProcess(
+            ["build.py"], 0,
+            json.dumps({"tag": "v1.30.2", "commit": "abc123", "rust_toolchain": "1.98.1", "exact_seed": True}) + "\n",
+            "",
+        )
+        with mock.patch.object(plan, "existing_release_assets", return_value=existing), \
+             mock.patch.object(plan.subprocess, "run", side_effect=[
+                 subprocess.CompletedProcess(["git"], 0, b"", b""),
+                 fake_check,
+             ]), \
+             mock.patch.object(plan.sys, "argv", [
+                 "plan_release.py", "--event", "workflow_dispatch",
+                 "--github-output", str(output_file),
+             ]):
+            self.assertEqual(plan.main(), 0)
+        outputs = dict(line.split("=", 1) for line in output_file.read_text(encoding="utf-8").splitlines())
+        self.assertEqual(outputs["should_build"], "true")
+        self.assertEqual(outputs["should_build_windows"], "false")
+        self.assertEqual(outputs["should_build_macos"], "true")
+        self.assertEqual(outputs["macos_asset_name"], "zed-native-math-v1.30.2-macos-arm64.zip")
+
+        # When both platform assets exist, skip without cloning upstream.
+        output_both = self.base / "github_output_both.txt"
+        both = existing | {"zed-native-math-v1.30.2-macos-arm64.zip"}
+        with mock.patch.object(plan, "existing_release_assets", return_value=both), \
+             mock.patch.object(plan.subprocess, "run") as mock_sub, \
+             mock.patch.object(plan.sys, "argv", [
+                 "plan_release.py", "--event", "workflow_dispatch",
+                 "--github-output", str(output_both),
+             ]):
+            self.assertEqual(plan.main(), 0)
+            mock_sub.assert_not_called()
+        outputs_both = dict(line.split("=", 1) for line in output_both.read_text(encoding="utf-8").splitlines())
+        self.assertEqual(outputs_both["should_build"], "false")
+        self.assertEqual(outputs_both["should_build_windows"], "false")
+        self.assertEqual(outputs_both["should_build_macos"], "false")
+
 
 if __name__ == "__main__":
     unittest.main()

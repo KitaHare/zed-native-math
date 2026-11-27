@@ -140,7 +140,7 @@ def prepare_upstream(source, tag, output_dir, *, check_only=False):
     recipe["zed"] = {"tag": tag, "commit": commit}
     recipe["patch"] = {"file": exported_patch.name}
     recipe["rust_toolchain"] = channel
-    recipe["tested_platforms"] = ["Windows x64"]
+    recipe["tested_platforms"] = ["macOS arm64"] if sys.platform == "darwin" else ["Windows x64"]
     recipe.pop("verification", None)
     manifest_path = output_dir / "manifest.json"
     manifest_path.write_text(json.dumps(recipe, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -275,8 +275,10 @@ def build_environment():
     return environment
 
 
-def build_features():
-    return "util/debug-embed" if sys.platform == "win32" else MACOS_FEATURES
+def build_features(release=False):
+    if sys.platform == "win32":
+        return "util/debug-embed"
+    return "gpui_platform/runtime_shaders" if release else MACOS_FEATURES
 
 
 def cargo_command(action, release=False):
@@ -284,13 +286,13 @@ def cargo_command(action, release=False):
         return ["cargo", "test", "--locked", "-p", "markdown", "--lib",
                 "--features", build_features(), "--", "--test-threads=1"]
     command = ["cargo", "build", "--locked", "-p", "zed", "--bin", "zed"]
-    if sys.platform == "win32":
+    if sys.platform == "win32" or release:
         command.extend(["-p", "cli", "--bin", "cli"])
-        if not release:
-            # Zed treats debug builds as staff in this crate, implicitly enabling ACP beta.
-            # Match stable's feature selection without disabling legitimate server-granted flags.
-            command.extend(["--config", "profile.dev.package.feature_flags.debug-assertions=false"])
-    command.extend(["--features", build_features()])
+    if sys.platform == "win32" and not release:
+        # Zed treats debug builds as staff in this crate, implicitly enabling ACP beta.
+        # Match stable's feature selection without disabling legitimate server-granted flags.
+        command.extend(["--config", "profile.dev.package.feature_flags.debug-assertions=false"])
+    command.extend(["--features", build_features(release=release)])
     if release:
         command.append("--release")
     return command
@@ -375,6 +377,18 @@ def validate_windows_package(directory, expected_tag, expected_commit):
     print("Validated packaged GUI and CLI: " + version_output.strip())
 
 
+def make_tree_user_writable(root):
+    """Ensure copied DMG templates are user-writable before patching and re-signing."""
+    for current, dirs, files in os.walk(root):
+        current_path = Path(current)
+        if not current_path.is_symlink():
+            os.chmod(current_path, current_path.stat().st_mode | 0o200)
+        for name in files:
+            item = current_path / name
+            if not item.is_symlink():
+                os.chmod(item, item.stat().st_mode | 0o200)
+
+
 def package_application(source, template, destination, release=False):
     if destination.exists() or destination.is_symlink():
         raise BuildError("Destination already exists; refusing to overwrite it: " + str(destination))
@@ -391,7 +405,24 @@ def package_application(source, template, destination, release=False):
     run(["codesign", "--verify", "--deep", "--strict", template])
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(template, destination, symlinks=True)
+    make_tree_user_writable(destination)
     shutil.copy2(binary, destination / "Contents/MacOS/zed")
+    cli_binary = binary.parent / "cli"
+    if cli_binary.is_file():
+        shutil.copy2(cli_binary, destination / "Contents/MacOS/cli")
+    resources = destination / "Contents/Resources"
+    resources.mkdir(parents=True, exist_ok=True)
+    (resources / "native-math-manifest.json").write_bytes(MANIFEST_BYTES)
+    license_sources = {
+        ROOT / "LICENSE": resources / "licenses/LICENSE",
+        ROOT / "NOTICE.md": resources / "licenses/NOTICE.md",
+        source / "LICENSE-GPL": resources / "licenses/ZED-LICENSE-GPL",
+        source / "LICENSE-APACHE": resources / "licenses/ZED-LICENSE-APACHE",
+    }
+    for src, dst in license_sources.items():
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
     information.update(CFBundleName="Zed Native Math (Community)",
                        CFBundleDisplayName="Zed Native Math (Community)",
                        CFBundleIdentifier="local.zed.NativeMath", CFBundleExecutable="zed",
@@ -404,6 +435,57 @@ def package_application(source, template, destination, release=False):
     run(["codesign", "--force", "--deep", "--sign", "-", destination])
     run(["codesign", "--verify", "--deep", "--strict", destination])
     print("Built community application: " + str(destination))
+
+
+def validate_macos_package(app_directory, expected_tag, expected_commit):
+    app_directory = Path(app_directory).expanduser().resolve()
+    plist_path = app_directory / "Contents/Info.plist"
+    if not plist_path.is_file():
+        raise BuildError("macOS app bundle is missing Contents/Info.plist")
+    with plist_path.open("rb") as stream:
+        info = plistlib.load(stream)
+    expected_version = expected_tag.removeprefix("v")
+    if info.get("CFBundleShortVersionString") != expected_version:
+        raise BuildError("Packaged macOS Info.plist version mismatch: " + str(info.get("CFBundleShortVersionString")))
+    if info.get("ZedMathBaseCommit") != expected_commit:
+        raise BuildError("Packaged macOS Info.plist commit mismatch: " + str(info.get("ZedMathBaseCommit")))
+    run(["codesign", "--verify", "--deep", "--strict", app_directory])
+    help_proc = run([app_directory / "Contents/MacOS/zed", "--help"], capture=True)
+    help_output = (help_proc.stdout + (help_proc.stderr or b"")).decode("utf-8", errors="replace")
+    if "PATHS_OR_URLS" not in help_output:
+        raise BuildError("Packaged macOS GUI command entry did not start correctly")
+    cli_path = app_directory / "Contents/MacOS/cli"
+    if cli_path.is_file():
+        version_proc = run([cli_path, "--version"], capture=True)
+        version_output = (version_proc.stdout + (version_proc.stderr or b"")).decode("utf-8", errors="replace")
+        if ("Zed " + expected_version + " " not in version_output
+                or expected_commit not in version_output):
+            raise BuildError("Packaged macOS CLI does not match expected build: " + version_output.strip())
+        print("Validated packaged macOS GUI and CLI: " + version_output.strip())
+    else:
+        print("Validated packaged macOS GUI: Zed " + expected_version + " " + expected_commit)
+
+
+def archive_macos_package(app_directory, archive_path):
+    app_directory = Path(app_directory).expanduser().resolve()
+    archive_path = Path(archive_path).expanduser().resolve()
+    required = [
+        "Contents/Info.plist",
+        "Contents/MacOS/zed",
+        "Contents/Resources/native-math-manifest.json",
+    ]
+    missing = [item for item in required if not (app_directory / item).is_file()]
+    if missing:
+        raise BuildError("macOS app bundle is incomplete:\n" + "\n".join(missing))
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = archive_path.with_name(archive_path.name + ".tmp-" + str(os.getpid()) + ".zip")
+    try:
+        run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app_directory, temporary])
+        os.replace(temporary, archive_path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    print("Archived macOS package: " + str(archive_path))
 
 
 def main():
@@ -435,10 +517,16 @@ def main():
         if arguments.action == "archive":
             if not arguments.archive_path:
                 raise BuildError("--archive-path is required for archive")
-            archive_windows_package(arguments.destination, arguments.archive_path)
+            if sys.platform == "darwin" or arguments.destination.name.endswith(".app"):
+                archive_macos_package(arguments.destination, arguments.archive_path)
+            else:
+                archive_windows_package(arguments.destination, arguments.archive_path)
             return 0
         if arguments.action == "validate-package":
-            validate_windows_package(arguments.destination, MANIFEST["zed"]["tag"], BASE_COMMIT)
+            if sys.platform == "darwin" or arguments.destination.name.endswith(".app"):
+                validate_macos_package(arguments.destination, MANIFEST["zed"]["tag"], BASE_COMMIT)
+            else:
+                validate_windows_package(arguments.destination, MANIFEST["zed"]["tag"], BASE_COMMIT)
             return 0
         if not arguments.source:
             raise BuildError("--source is required for " + arguments.action)

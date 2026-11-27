@@ -1,4 +1,4 @@
-name: Build and Publish Windows Release
+name: Build and Publish Releases
 
 on:
   workflow_dispatch:
@@ -11,6 +11,15 @@ on:
         description: "Optional revision suffix for re-releasing the same Zed version (e.g. math.2)"
         required: false
         default: ""
+      platforms:
+        description: "Target platforms to build"
+        type: choice
+        required: false
+        default: "all"
+        options:
+          - all
+          - windows
+          - macos
       force_rebuild:
         description: "Rebuild and overwrite assets even if the release already exists"
         type: boolean
@@ -39,11 +48,15 @@ jobs:
       issues: write
     outputs:
       should_build: ${{ steps.plan.outputs.should_build }}
+      should_build_windows: ${{ steps.plan.outputs.should_build_windows }}
+      should_build_macos: ${{ steps.plan.outputs.should_build_macos }}
       zed_tag: ${{ steps.plan.outputs.zed_tag }}
       zed_commit: ${{ steps.plan.outputs.zed_commit }}
       rust_toolchain: ${{ steps.plan.outputs.rust_toolchain }}
       release_tag: ${{ steps.plan.outputs.release_tag }}
       asset_name: ${{ steps.plan.outputs.asset_name }}
+      windows_asset_name: ${{ steps.plan.outputs.windows_asset_name }}
+      macos_asset_name: ${{ steps.plan.outputs.macos_asset_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +72,7 @@ jobs:
           python3 .github/scripts/plan_release.py \
             --zed-tag "${{ inputs.zed_tag }}" \
             --release-suffix "${{ inputs.release_suffix }}" \
+            --target-platforms "${{ inputs.platforms || 'all' }}" \
             ${{ inputs.force_rebuild && '--force-rebuild' || '' }} \
             --conflict-report .work/conflict.log
 
@@ -70,7 +84,7 @@ jobs:
         run: |
           title="Upstream math patch conflict on ${ZED_TAG}"
           existing=$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number // empty')
-          body=$(printf "Scheduled preflight detected a patch conflict when applying the maintained native math patch to upstream Zed \`%s\`.\n\nNo Windows build minutes were consumed.\n\n\`\`\`text\n%s\n\`\`\`\n" "$ZED_TAG" "$(tail -n 80 .work/conflict.log)")
+          body=$(printf "Scheduled preflight detected a patch conflict when applying the maintained native math patch to upstream Zed \`%s\`.\n\nNo build minutes were consumed.\n\n\`\`\`text\n%s\n\`\`\`\n" "$ZED_TAG" "$(tail -n 80 .work/conflict.log)")
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
           else
@@ -79,7 +93,7 @@ jobs:
 
   build-windows:
     needs: plan
-    if: needs.plan.outputs.should_build == 'true'
+    if: needs.plan.outputs.should_build_windows == 'true'
     runs-on: windows-2025
     timeout-minutes: 180
     permissions:
@@ -89,7 +103,7 @@ jobs:
       ZED_COMMIT: ${{ needs.plan.outputs.zed_commit }}
       RUST_TOOLCHAIN: ${{ needs.plan.outputs.rust_toolchain }}
       RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
-      ASSET_NAME: ${{ needs.plan.outputs.asset_name }}
+      ASSET_NAME: ${{ needs.plan.outputs.windows_asset_name }}
       CARGO_BUILD_JOBS: "4"
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_RELEASE_DEBUG: "0"
@@ -142,7 +156,7 @@ jobs:
             $proc = Start-Process -FilePath $installer -ArgumentList @(
               'modify', '--installPath', "`"$vsPath`"",
               '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre',
-              '--quiet', '--norestart', '--wait'
+              '--quiet', '--norestart'
             ) -NoNewWindow -Wait -PassThru
             if ($proc.ExitCode -notin @(0, 3010)) {
               throw "VS installer exited with code $($proc.ExitCode)"
@@ -239,24 +253,220 @@ jobs:
           $patchPath = ".work\prepared\zed-${env:ZED_TAG}-native-math.patch"
           $notesPath = '.work\release-notes.md'
           @(
-            "Prebuilt Windows x64 community release of **Zed Native Math** based on official Zed ``${env:ZED_TAG}`` (``${env:ZED_COMMIT}``)."
+            "Prebuilt community releases of **Zed Native Math** based on official Zed ``${env:ZED_TAG}`` (``${env:ZED_COMMIT}``)."
             ''
             '- Built in CI with native Markdown + RaTeX math unit tests verified.'
-            '- Exact corresponding source patch and manifest are attached for GPL-3.0 compliance.'
-            '- Update locally with `.\install-windows-updates.ps1 check` (or automatically via the desktop shortcut).'
+            '- Exact corresponding source patch and manifests are attached for GPL-3.0 compliance.'
+            '- **Windows x64**: update locally with `.\install-windows-updates.ps1 check` (or automatically via the desktop shortcut).'
+            '- **macOS Apple Silicon (`arm64`)**: unzip `Zed Native Math (Community).app` to `/Applications` and clear quarantine on first launch with `xattr -dr com.apple.quarantine "/Applications/Zed Native Math (Community).app"`.'
           ) | Set-Content -LiteralPath $notesPath -Encoding utf8
           $ErrorActionPreference = 'Continue'
           gh release view $env:RELEASE_TAG 2>$null | Out-Null
-          $exists = ($LASTEXITCODE -eq 0)
-          $ErrorActionPreference = 'Stop'
-          if ($exists) {
-            gh release upload $env:RELEASE_TAG $zipPath $manifestPath $patchPath --clobber
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            gh release edit $env:RELEASE_TAG --notes-file $notesPath
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } else {
-            gh release create $env:RELEASE_TAG $zipPath $manifestPath $patchPath `
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG `
               --title "Zed Native Math ${env:RELEASE_TAG}" `
-              --notes-file $notesPath
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              --notes-file $notesPath 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              # A sibling platform job may have created the release concurrently.
+              gh release view $env:RELEASE_TAG | Out-Null
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
           }
+          $ErrorActionPreference = 'Stop'
+          gh release upload $env:RELEASE_TAG $zipPath $manifestPath $patchPath --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          gh release edit $env:RELEASE_TAG --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  build-macos:
+    needs: plan
+    if: needs.plan.outputs.should_build_macos == 'true'
+    runs-on: macos-26
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      ZED_TAG: ${{ needs.plan.outputs.zed_tag }}
+      ZED_COMMIT: ${{ needs.plan.outputs.zed_commit }}
+      RUST_TOOLCHAIN: ${{ needs.plan.outputs.rust_toolchain }}
+      RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+      ASSET_NAME: ${{ needs.plan.outputs.macos_asset_name }}
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      CXXFLAGS: "-stdlib=libc++"
+      RELEASE_CHANNEL: stable
+      ZED_RELEASE_CHANNEL: stable
+      # Standard macos-26 arm64 runners have 3 vCPUs and 7 GB RAM; keep concurrency memory-safe.
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_STRIP: "symbols"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Select Xcode with macOS SDK 26+, ensure CMake, and free runner disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          current_sdk=$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || echo "0")
+          best_xcode=""
+          best_major=0
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+            sdk_plist=$(find "$app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs" -maxdepth 2 -name SDKSettings.plist 2>/dev/null | head -n 1 || true)
+            [ -f "$sdk_plist" ] || continue
+            ver=$(/usr/libexec/PlistBuddy -c 'Print :Version' "$sdk_plist" 2>/dev/null || echo "0")
+            major="${ver%%.*}"
+            echo "Found $app -> macOS SDK $ver"
+            if [[ "$major" =~ ^[0-9]+$ ]] && (( major >= 26 )) && (( major >= best_major )); then
+              best_major="$major"
+              best_xcode="$app"
+            fi
+          done
+          if [ -n "$best_xcode" ]; then
+            sudo xcode-select -s "$best_xcode/Contents/Developer"
+          elif [[ "${current_sdk%%.*}" -lt 26 ]]; then
+            echo "Warning: no Xcode with macOS SDK 26+ found (active SDK: $current_sdk)"
+          fi
+          SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+          echo "SDKROOT=$SDKROOT" >> "$GITHUB_ENV"
+          echo "Selected Xcode: $(xcode-select -p) | SDK: $(xcrun --sdk macosx --show-sdk-version) ($SDKROOT)"
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+
+          active_dev=$(xcode-select -p)
+          active_app=$(cd "$active_dev/../.." && pwd -P)
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+            resolved=$(cd "$app" && pwd -P)
+            if [ "$resolved" != "$active_app" ]; then
+              echo "Removing unused Xcode bundle: $app"
+              sudo rm -rf "$app" || true
+            fi
+          done
+          sudo rm -rf \
+            "$HOME/Library/Android" \
+            /usr/local/lib/android \
+            /Library/Developer/CoreSimulator/Profiles/Runtimes \
+            /Library/Developer/CoreSimulator/Volumes \
+            || true
+          df -h /
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "${RUST_TOOLCHAIN}-aarch64-apple-darwin" --profile minimal --no-self-update
+
+      - name: Restore Cargo registry cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: zed-math-macos-arm64-${{ needs.plan.outputs.rust_toolchain }}-${{ hashFiles('patches/**') }}
+          restore-keys: |
+            zed-math-macos-arm64-${{ needs.plan.outputs.rust_toolchain }}-
+            zed-math-macos-arm64-
+
+      - name: Clone upstream Zed and prepare patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$ZED_TAG" --single-branch https://github.com/zed-industries/zed.git .work/zed-upstream
+          seed_tag=$(python3 -c "import json; print(json.load(open('manifest.json'))['windows_update']['seed']['tag'])")
+          if [ "$ZED_TAG" != "$seed_tag" ]; then
+            git -C .work/zed-upstream fetch --depth 1 origin tag "$seed_tag"
+          fi
+          python3 build.py prepare --platform win32 --source .work/zed-upstream --tag "$ZED_TAG" --output-dir .work/prepared
+
+      - name: Run native Markdown and Math tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_path=".work/markdown-tests.log"
+          python3 build.py test --source .work/zed-upstream --manifest .work/prepared/manifest.json 2>&1 | tee "$log_path"
+          grep -q 'test katex::tests::test_math_with_setext_lines_renders_to_svg \.\.\. ok' "$log_path"
+          grep -Eq 'test result: ok\. [0-9]+ passed; 0 failed;' "$log_path"
+          # Reclaim debug build artifacts before full release compilation on 14 GB runners.
+          rm -rf .work/zed-upstream/target/debug
+          df -h /
+
+      - name: Build lightweight Release GUI and CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 build.py build --source .work/zed-upstream --manifest .work/prepared/manifest.json --release
+          df -h /
+
+      - name: Download official Zed.app template, package, validate, and archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg_path=".work/Zed-aarch64.dmg"
+          mount_dir=".work/zed-dmg"
+          app_dest="dist/Zed Native Math (Community).app"
+          cleanup() {
+            if mount | grep -q "$mount_dir"; then
+              hdiutil detach "$mount_dir" -force || true
+            fi
+          }
+          trap cleanup EXIT
+          curl -fSL --retry 3 --retry-delay 5 \
+            "https://github.com/zed-industries/zed/releases/download/${ZED_TAG}/Zed-aarch64.dmg" \
+            -o "$dmg_path"
+          mkdir -p "$mount_dir"
+          hdiutil attach -nobrowse -readonly -mountpoint "$mount_dir" "$dmg_path"
+          template_app="$mount_dir/Zed.app"
+          if [ ! -d "$template_app" ]; then
+            template_app=$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)
+          fi
+          test -d "$template_app"
+          python3 build.py package \
+            --source .work/zed-upstream \
+            --manifest .work/prepared/manifest.json \
+            --template "$template_app" \
+            --destination "$app_dest" \
+            --release
+          python3 build.py validate-package \
+            --manifest .work/prepared/manifest.json \
+            --destination "$app_dest"
+          python3 build.py archive \
+            --destination "$app_dest" \
+            --archive-path "dist/${ASSET_NAME}"
+          cp "$app_dest/Contents/Resources/native-math-manifest.json" "dist/native-math-manifest-macos-arm64.json"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          zip_path="dist/${ASSET_NAME}"
+          manifest_path="dist/native-math-manifest-macos-arm64.json"
+          patch_path=".work/prepared/zed-${ZED_TAG}-native-math.patch"
+          notes_path=".work/release-notes.md"
+          cat > "$notes_path" <<EOF
+          Prebuilt community releases of **Zed Native Math** based on official Zed \`${ZED_TAG}\` (\`${ZED_COMMIT}\`).
+
+          - Built in CI with native Markdown + RaTeX math unit tests verified.
+          - Exact corresponding source patch and manifests are attached for GPL-3.0 compliance.
+          - **Windows x64**: update locally with \`.\install-windows-updates.ps1 check\` (or automatically via the desktop shortcut).
+          - **macOS Apple Silicon (\`arm64\`)**: unzip \`Zed Native Math (Community).app\` to \`/Applications\` and clear quarantine on first launch with \`xattr -dr com.apple.quarantine "/Applications/Zed Native Math (Community).app"\`.
+          EOF
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "Zed Native Math ${RELEASE_TAG}" \
+              --notes-file "$notes_path" || gh release view "$RELEASE_TAG" >/dev/null
+          fi
+          gh release upload "$RELEASE_TAG" "$zip_path" "$manifest_path" "$patch_path" --clobber
+          gh release edit "$RELEASE_TAG" --notes-file "$notes_path"

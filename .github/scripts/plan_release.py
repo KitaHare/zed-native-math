@@ -49,15 +49,19 @@ def resolve_zed_tag(requested_tag, event_name, manifest):
     return tag
 
 
-def release_asset_exists(repo, release_tag, asset_name, token=None):
+def existing_release_assets(repo, release_tag, token=None):
     url = f"https://api.github.com/repos/{repo}/releases/tags/{release_tag}"
     try:
         data = fetch_json(url, token)
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            return False
+            return set()
         raise
-    return any(asset.get("name") == asset_name for asset in data.get("assets") or [])
+    return {asset.get("name") for asset in (data.get("assets") or []) if asset.get("name")}
+
+
+def release_asset_exists(repo, release_tag, asset_name, token=None):
+    return asset_name in existing_release_assets(repo, release_tag, token)
 
 
 def write_outputs(path, outputs):
@@ -75,6 +79,7 @@ def main():
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "KitaHare/zed-native-math"))
     parser.add_argument("--zed-tag", default="")
     parser.add_argument("--release-suffix", default="")
+    parser.add_argument("--target-platforms", choices=["all", "windows", "macos"], default="all")
     parser.add_argument("--force-rebuild", action="store_true")
     parser.add_argument("--github-output", default=os.environ.get("GITHUB_OUTPUT", ""))
     parser.add_argument("--conflict-report", type=Path)
@@ -86,16 +91,27 @@ def main():
     if suffix and not re.fullmatch(r"math\.\d+", suffix):
         raise RuntimeError(f"Invalid release suffix (expected math.N): {suffix}")
     release_tag = f"{zed_tag}-{suffix}" if suffix else zed_tag
-    asset_name = f"zed-native-math-{release_tag}-windows-x64.zip"
+    windows_asset_name = f"zed-native-math-{release_tag}-windows-x64.zip"
+    macos_asset_name = f"zed-native-math-{release_tag}-macos-arm64.zip"
 
     token = os.environ.get("GITHUB_TOKEN")
-    if not arguments.force_rebuild and release_asset_exists(arguments.repo, release_tag, asset_name, token):
+    existing = set() if arguments.force_rebuild else existing_release_assets(arguments.repo, release_tag, token)
+    want_windows = arguments.target_platforms in ("all", "windows")
+    want_macos = arguments.target_platforms in ("all", "macos")
+    should_build_windows = want_windows and (arguments.force_rebuild or windows_asset_name not in existing)
+    should_build_macos = want_macos and (arguments.force_rebuild or macos_asset_name not in existing)
+
+    if not (should_build_windows or should_build_macos):
         write_outputs(arguments.github_output, {
             "should_build": "false",
+            "should_build_windows": "false",
+            "should_build_macos": "false",
             "reason": "already-published",
             "zed_tag": zed_tag,
             "release_tag": release_tag,
-            "asset_name": asset_name,
+            "asset_name": windows_asset_name,
+            "windows_asset_name": windows_asset_name,
+            "macos_asset_name": macos_asset_name,
             "conflict": "false",
         })
         return 0
@@ -130,10 +146,14 @@ def main():
                 arguments.conflict_report.write_text(check.stdout, encoding="utf-8")
             write_outputs(arguments.github_output, {
                 "should_build": "false",
+                "should_build_windows": "false",
+                "should_build_macos": "false",
                 "reason": "patch-conflict",
                 "zed_tag": zed_tag,
                 "release_tag": release_tag,
-                "asset_name": asset_name,
+                "asset_name": windows_asset_name,
+                "windows_asset_name": windows_asset_name,
+                "macos_asset_name": macos_asset_name,
                 "conflict": "true",
             })
             print(check.stdout, file=sys.stderr)
@@ -143,13 +163,17 @@ def main():
         info = json.loads(check.stdout.strip().splitlines()[-1])
         write_outputs(arguments.github_output, {
             "should_build": "true",
+            "should_build_windows": str(should_build_windows).lower(),
+            "should_build_macos": str(should_build_macos).lower(),
             "reason": "ready",
             "zed_tag": info["tag"],
             "zed_commit": info["commit"],
             "rust_toolchain": info["rust_toolchain"],
             "exact_seed": str(info["exact_seed"]).lower(),
             "release_tag": release_tag,
-            "asset_name": asset_name,
+            "asset_name": windows_asset_name,
+            "windows_asset_name": windows_asset_name,
+            "macos_asset_name": macos_asset_name,
             "conflict": "false",
         })
         return 0
